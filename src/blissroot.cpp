@@ -65,7 +65,7 @@ static void unload_launchd_job(){
     std::remove(kLaunchdPlistPath);
 }
 
-static bool install_launchd_job(int minutes){
+static bool install_launchd_job(int minutes, const std::string& config_path){
     std::ofstream plist(kLaunchdPlistPath, std::ios::trunc);
     if(!plist.is_open()){
         return false;
@@ -80,8 +80,11 @@ static bool install_launchd_job(int minutes){
           << "  <key>ProgramArguments</key>\n"
           << "  <array>\n"
           << "    <string>/usr/local/bin/blissd</string>\n"
-          << "    <string>" << minutes << "</string>\n"
-          << "  </array>\n"
+          << "    <string>" << minutes << "</string>\n";
+    if(!config_path.empty()){
+        plist << "    <string>" << config_path << "</string>\n";
+    }
+    plist << "  </array>\n"
           << "  <key>RunAtLoad</key>\n"
           << "  <true/>\n"
           << "  <key>KeepAlive</key>\n"
@@ -117,8 +120,11 @@ static bool cleanup_if_stale(){
     return true;
 }
 
-static bool handle_start(int minutes, std::string& out_msg){
+static bool handle_start(int minutes, const std::string& config_path, std::string& out_msg){
     log_line("handle_start called");
+    if(!config_path.empty()){
+        set_config_path_override(config_path);
+    }
     cleanup_if_stale();
     if(is_launchd_job_loaded()){
         unload_launchd_job();
@@ -137,7 +143,7 @@ static bool handle_start(int minutes, std::string& out_msg){
         out_msg = "error: end time write failed (see /tmp/blissroot.err)\n";
         return false;
     }
-    if(!install_launchd_job(minutes)){
+    if(!install_launchd_job(minutes, config_path)){
         out_msg = "error: launchd install failed (see /tmp/blissroot.err)\n";
         return false;
     }
@@ -200,10 +206,7 @@ static bool handle_line(const std::string& line, std::string& out_msg){
         if(!cfg_path.empty() && cfg_path[0] == ' '){
             cfg_path.erase(0, cfg_path.find_first_not_of(' '));
         }
-        if(!cfg_path.empty()){
-            set_config_path_override(cfg_path);
-        }
-        return handle_start(minutes, out_msg);
+        return handle_start(minutes, cfg_path, out_msg);
     }
     if(cmd == "panic"){
         return handle_panic(out_msg);

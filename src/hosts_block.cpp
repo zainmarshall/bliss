@@ -26,6 +26,18 @@ static const char* kDefaultDomains[] = {
 static const size_t kDefaultDomainCount = sizeof(kDefaultDomains) / sizeof(kDefaultDomains[0]);
 static std::string g_config_path_override;
 
+static std::string get_config_dir_from_override(){
+    if(g_config_path_override.empty()){
+        return "";
+    }
+    std::string path = g_config_path_override;
+    size_t slash = path.find_last_of('/');
+    if(slash == std::string::npos){
+        return "";
+    }
+    return path.substr(0, slash);
+}
+
 bool parse_minutes(const char* s, int& out_minutes){
     if(!s || *s == '\0') return false;
     char* end = nullptr;
@@ -79,6 +91,16 @@ std::string get_config_path(){
         return g_config_path_override;
     }
     return get_config_dir() + "/blocks.txt";
+}
+
+std::string get_app_config_path(){
+    if(!g_config_path_override.empty()){
+        std::string dir = get_config_dir_from_override();
+        if(!dir.empty()){
+            return dir + "/apps.txt";
+        }
+    }
+    return get_config_dir() + "/apps.txt";
 }
 
 void set_config_path_override(const std::string& path){
@@ -178,6 +200,80 @@ bool remove_block_domain(const std::string& domain){
         }
     }
     return write_block_list(filtered);
+}
+
+static bool write_app_list(const std::vector<std::string>& apps){
+    if(!ensure_config_dir()){
+        std::cout << "[error] unable to create config directory (check permissions)\n";
+        return false;
+    }
+    std::ofstream out(get_app_config_path(), std::ios::trunc);
+    if(!out.is_open()){
+        std::cout << "[error] unable to write app config file (check permissions)\n";
+        std::cout << "if this was created by sudo, run: sudo chown -R $USER ~/.config/bliss\n";
+        return false;
+    }
+    for(const auto& a : apps){
+        out << a << "\n";
+    }
+    return true;
+}
+
+bool load_app_list(std::vector<std::string>& out_apps){
+    out_apps.clear();
+    std::ifstream in(get_app_config_path());
+    if(!in.is_open()){
+        return true;
+    }
+    std::set<std::string> uniq;
+    std::string line;
+    while(std::getline(in, line)){
+        std::string t = trim(line);
+        if(t.empty() || t[0] == '#') continue;
+        uniq.insert(t);
+    }
+    for(const auto& a : uniq){
+        out_apps.push_back(a);
+    }
+    return true;
+}
+
+bool add_block_app(const std::string& app){
+    std::string cleaned = trim(app);
+    if(cleaned.empty()){
+        std::cout << "[error] invalid app\n";
+        return false;
+    }
+    std::vector<std::string> apps;
+    if(!load_app_list(apps)){
+        return false;
+    }
+    for(const auto& a : apps){
+        if(a == cleaned){
+            return true;
+        }
+    }
+    apps.push_back(cleaned);
+    return write_app_list(apps);
+}
+
+bool remove_block_app(const std::string& app){
+    std::string cleaned = trim(app);
+    if(cleaned.empty()){
+        std::cout << "[error] invalid app\n";
+        return false;
+    }
+    std::vector<std::string> apps;
+    if(!load_app_list(apps)){
+        return false;
+    }
+    std::vector<std::string> filtered;
+    for(const auto& a : apps){
+        if(a != cleaned){
+            filtered.push_back(a);
+        }
+    }
+    return write_app_list(filtered);
 }
 
 static void flush_dns(){

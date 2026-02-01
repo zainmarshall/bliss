@@ -2,14 +2,17 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+echo "[bliss] menubar: preparing..."
 PREBUILT_BIN="${ROOT_DIR}/menubar/blissbar"
 BUILD_DIR="${ROOT_DIR}/menubar/build"
 BIN="${BUILD_DIR}/blissbar"
 
 if [[ -f "${PREBUILT_BIN}" ]]; then
+  echo "[bliss] menubar: using prebuilt binary"
   mkdir -p "${BUILD_DIR}"
   cp "${PREBUILT_BIN}" "${BIN}"
 else
+  echo "[bliss] menubar: building from source"
   SRC="${ROOT_DIR}/menubar/main.swift"
   mkdir -p "${BUILD_DIR}"
   /usr/bin/swiftc -framework Cocoa "${SRC}" -o "${BIN}"
@@ -17,6 +20,7 @@ fi
 
 INSTALL_DIR="${HOME}/Library/Application Support/Bliss"
 LAUNCH_AGENT="${HOME}/Library/LaunchAgents/com.bliss.menubar.plist"
+echo "[bliss] menubar: installing"
 mkdir -p "${INSTALL_DIR}"
 cp "${BIN}" "${INSTALL_DIR}/blissbar"
 
@@ -29,4 +33,4 @@ chmod 755 "${INSTALL_DIR}/blissbar"
 /bin/launchctl bootstrap "gui/$(id -u)" "${LAUNCH_AGENT}"
 /bin/launchctl kickstart -k "gui/$(id -u)/com.bliss.menubar"
 
-echo "Bliss menubar installed and running."
+echo "[bliss] menubar: installed and running"

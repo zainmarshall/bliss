@@ -15,6 +15,10 @@
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <cstdio>
+#include <filesystem>
+#include <algorithm>
+#include <cctype>
 
 using std::string;
 
@@ -32,6 +36,9 @@ static void print_usage(){
         << "bliss config add <domain>\n"
         << "bliss config remove <domain>\n"
         << "bliss config list\n"
+        << "bliss config app add [<app name>]\n"
+        << "bliss config app remove <app entry>\n"
+        << "bliss config app list\n"
         << "bliss --help\n";
 }
 
@@ -185,6 +192,149 @@ static bool send_to_root_helper(const std::string& line){
     }
     std::cout << resp;
     return false;
+}
+
+static bool command_exists(const std::string& cmd){
+    std::string test = "command -v " + cmd + " >/dev/null 2>&1";
+    return std::system(test.c_str()) == 0;
+}
+
+static std::string pick_app_path_fzf(){
+    const char* no_fzf = std::getenv("BLISS_NO_FZF");
+    if(no_fzf && *no_fzf != '\0'){
+        return "";
+    }
+    if(!command_exists("fzf")){
+        return "";
+    }
+    const char* script =
+        "find /Applications ~/Applications -maxdepth 2 -type d -name \"*.app\" 2>/dev/null | "
+        "sed 's#.*/##' | sort -f | fzf";
+    FILE* pipe = popen(script, "r");
+    if(!pipe){
+        return "";
+    }
+    char buf[512];
+    std::string selection;
+    if(fgets(buf, sizeof(buf), pipe)){
+        selection = buf;
+        selection.erase(selection.find_last_not_of("\r\n") + 1);
+    }
+    pclose(pipe);
+    if(selection.empty()){
+        return "";
+    }
+    std::string path_script = "find /Applications ~/Applications -maxdepth 2 -type d -name \"" + selection + "\" 2>/dev/null | head -n 1";
+    FILE* pipe2 = popen(path_script.c_str(), "r");
+    if(!pipe2){
+        return "";
+    }
+    std::string path;
+    if(fgets(buf, sizeof(buf), pipe2)){
+        path = buf;
+        path.erase(path.find_last_not_of("\r\n") + 1);
+    }
+    pclose(pipe2);
+    return path;
+}
+
+static std::string pick_app_path_manual(){
+    std::vector<std::string> apps;
+    std::vector<std::string> roots = {"/Applications", std::string(std::getenv("HOME") ? std::getenv("HOME") : "") + "/Applications"};
+    for(const auto& root : roots){
+        if(root.empty()) continue;
+        std::error_code ec;
+        for(const auto& entry : std::filesystem::directory_iterator(root, ec)){
+            if(ec) break;
+            if(entry.is_directory()){
+                auto path = entry.path();
+                if(path.extension() == ".app"){
+                    apps.push_back(path.string());
+                }
+            }
+        }
+    }
+    if(apps.empty()){
+        return "";
+    }
+    std::sort(apps.begin(), apps.end());
+    std::cout << "search by app name (press Enter for full list): ";
+    std::string filter;
+    if(!std::getline(std::cin, filter)){
+        return "";
+    }
+    std::vector<std::string> filtered;
+    if(filter.empty()){
+        filtered = apps;
+    }else{
+        std::string f = filter;
+        for(char& c : f) c = static_cast<char>(std::tolower(c));
+        for(const auto& path : apps){
+            std::string name = std::filesystem::path(path).stem().string();
+            std::string low = name;
+            for(char& c : low) c = static_cast<char>(std::tolower(c));
+            if(low.find(f) != std::string::npos){
+                filtered.push_back(path);
+            }
+        }
+    }
+    if(filtered.empty()){
+        std::cout << "no matches\n";
+        return "";
+    }
+    std::cout << "select app:\n";
+    for(size_t i = 0; i < filtered.size(); ++i){
+        std::string path = filtered[i];
+        std::string name = std::filesystem::path(path).stem().string();
+        std::string short_path = path;
+        const char* home = std::getenv("HOME");
+        if(home && *home){
+            std::string home_prefix = std::string(home) + "/";
+            if(short_path.find(home_prefix) == 0){
+                short_path = "~/" + short_path.substr(home_prefix.size());
+            }
+        }
+        if(short_path.find("/Applications/") == 0){
+            short_path = short_path.substr(std::string("/Applications/").size());
+            short_path = "Apps/" + short_path;
+        }
+        std::cout << "  \033[32m[" << (i + 1) << "] " << name << "\033[0m"
+                  << "  \033[90m" << short_path << "\033[0m\n";
+    }
+    std::cout << "enter number: ";
+    std::string line;
+    if(!std::getline(std::cin, line)){
+        return "";
+    }
+    int idx = 0;
+    try{
+        idx = std::stoi(line);
+    }catch(...){
+        return "";
+    }
+    if(idx <= 0 || static_cast<size_t>(idx) > filtered.size()){
+        return "";
+    }
+    return filtered[idx - 1];
+}
+
+static std::string get_bundle_id_for_path(const std::string& app_path){
+    std::string cmd = "/usr/bin/mdls -name kMDItemCFBundleIdentifier -raw \"" + app_path + "\" 2>/dev/null";
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if(!pipe){
+        return "";
+    }
+    char buf[512];
+    std::string bundle;
+    if(fgets(buf, sizeof(buf), pipe)){
+        bundle = buf;
+        bundle.erase(bundle.find_last_not_of("\r\n") + 1);
+    }
+    pclose(pipe);
+    if(bundle == "(null)"){
+        return "";
+    }
+    return bundle;
 }
 
 static bool read_end_time(long long& end_time){
@@ -482,6 +632,63 @@ int main(int argc, char* argv[]){
             return 1;
         }
         string sub = argv[2];
+        if(sub == "app"){
+            if(argc < 4){
+                print_usage();
+                return 1;
+            }
+            string action = argv[3];
+            if(action == "add"){
+                std::string app_path;
+                if(argc >= 5){
+                    app_path = argv[4];
+                }else{
+                    app_path = pick_app_path_fzf();
+                    if(app_path.empty()){
+                        app_path = pick_app_path_manual();
+                    }
+                }
+                if(app_path.empty()){
+                    std::cout << "[error] no app selected (install fzf or pass a .app path)\n";
+                    return 1;
+                }
+                std::string bundle = get_bundle_id_for_path(app_path);
+                if(!bundle.empty()){
+                    add_block_app("bundle:" + bundle);
+                }
+                add_block_app("path:" + app_path);
+                std::cout << "selected: " << app_path << "\n";
+                if(!bundle.empty()){
+                    std::cout << "bundle: " << bundle << "\n";
+                }
+                std::cout << "added app\n";
+                return 0;
+            }
+            if(action == "remove"){
+                if(argc < 5){
+                    std::cout << "[error] config app remove requires <app entry>\n";
+                    return 1;
+                }
+                if(!remove_block_app(argv[4])){
+                    return 1;
+                }
+                std::cout << "removed app\n";
+                return 0;
+            }
+            if(action == "list"){
+                std::vector<std::string> apps;
+                if(!load_app_list(apps)){
+                    return 1;
+                }
+                std::cout << "config: " << get_app_config_path() << "\n";
+                for(const auto& a : apps){
+                    std::cout << a << "\n";
+                }
+                return 0;
+            }
+            print_usage();
+            return 1;
+        }
         if(sub == "add"){
             if(argc < 4){
                 std::cout << "[error] config add requires <domain>\n";

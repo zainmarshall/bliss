@@ -14,3 +14,7 @@ bool apply_firewall_block();
 bool remove_firewall_block();
 bool is_firewall_block_active();
 void set_config_path_override(const std::string& path);
+bool load_app_list(std::vector<std::string>& out_apps);
+bool add_block_app(const std::string& app);
+bool remove_block_app(const std::string& app);
+std::string get_app_config_path();
