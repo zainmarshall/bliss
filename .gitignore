@@ -1,0 +1,10 @@
+# build artifacts
+build/
+build-release/
+
+# menubar build output
+menubar/build/
+menubar/blissbar
+
+# misc
+.DS_Store
