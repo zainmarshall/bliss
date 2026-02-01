@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.bliss.menubar</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__BLISSBAR_PATH__</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/tmp/blissbar.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/blissbar.err</string>
+</dict>
+</plist>
