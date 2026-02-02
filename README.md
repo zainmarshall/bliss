@@ -1,5 +1,3 @@
-
-https://github.com/user-attachments/assets/c2b2d404-c9bf-42af-b617-aeb6cf68db37
 # Bliss
 Bliss is a macOS focus lock that blocks distracting websites and force‑closes selected apps. It runs a background timer, shows a menubar countdown, and makes you solve a typing challenge to escape early.
 
