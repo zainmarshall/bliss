@@ -14,21 +14,34 @@ https://github.com/user-attachments/assets/8482347b-8e83-4ea9-911a-1a47bd3a1aec
 - Menubar timer (always‑on status)
 - Panic mode typing challenge
 
-## Quick start
-
-- Install using this command 
- ```bash
+## Installation Instructions
+1. Download and run the release installer:
+  ```bash
 curl -fsSL https://github.com/zainmarshall/bliss/releases/download/v0.1.0/bliss-macos-universal.zip -o /tmp/bliss.zip && \
   rm -rf /tmp/bliss && mkdir -p /tmp/bliss && \
   unzip -q /tmp/bliss.zip -d /tmp/bliss && \
   bash /tmp/bliss/bliss_release/scripts/install.sh
 ```
-- `bliss config website add <domain>`
+NOTE: If you every on install see this error:
+Bootstrap failed: 5: Input/output error
+Try re-running the command as root for richer errors.
+Just re-run the command. That should fix it.
+2. Verify:
+`bliss --help`
+4. Configure it:
+`bliss config website add <DOMAIN OF WEBSITE TO BLOCK>`
+`bliss config app add` - Will open a menu to select which apps to block
+`bliss config website list` `bliss config app list` - List blocked apps
 NOTE: Bliss comes with nothing configured by default, like no apps and websites blocked, so if you start it from the start it'll block nothing and throw an error. Make sure you configure it. 
-- `bliss config app add` (This will open a menu for you to select apps)
-- `bliss start <minutes>`
+6. Start a new session:
+`bliss start <MINUTES>`
+7. If you need to exit early, panic exit:
+`bliss panic` - This will make you solve a puzzle to escape!
 
-Commands
+## Uninstallation Instructions
+Run `sudo bliss uninstall` and the app will execute its uninstall script and delete every file (config, block, daemon) that it created. 
+
+## Commands
 
 - bliss start <minutes> - Starts a timer for <minutes> minutes
 - bliss panic - Escape a block early by completing a typing challenge.
