@@ -47,3 +47,6 @@ Commands
 - **Menubar:** lightweight Swift status app shows the countdown.
 - **Root helper:** `blissroot` runs as a LaunchDaemon so users don’t need sudo after install.
 - **Config:** `~/.config/bliss/blocks.txt` stores blocked domains.
+
+## Devlogs
+Read the devlogs at: https://flavortown.hackclub.com/projects/11291 
