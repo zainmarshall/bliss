@@ -22,9 +22,10 @@ curl -fsSL https://github.com/zainmarshall/bliss/releases/download/v0.1.0/bliss-
   unzip -q /tmp/bliss.zip -d /tmp/bliss && \
   bash /tmp/bliss/bliss_release/scripts/install.sh
 ```
-- bliss config website add <domain>
-- bliss config app add (This will open a menu for you to select apps)
-- bliss start 25
+- `bliss config website add <domain>`
+NOTE: Bliss comes with nothing configured by default, like no apps and websites blocked, so if you start it from the start it'll block nothing and throw an error. Make sure you configure it. 
+- `bliss config app add` (This will open a menu for you to select apps)
+- `bliss start <minutes>`
 
 Commands
 
