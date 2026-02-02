@@ -33,11 +33,11 @@ static void print_usage(){
         << "bliss panic\n"
         << "bliss status\n"
         << "bliss uninstall\n"
-        << "bliss config add <domain>\n"
-        << "bliss config remove <domain>\n"
-        << "bliss config list\n"
-        << "bliss config app add [<app name>]\n"
-        << "bliss config app remove <app entry>\n"
+        << "bliss config website add <domain>\n"
+        << "bliss config website remove <domain>\n"
+        << "bliss config website list\n"
+        << "bliss config app add\n"
+        << "bliss config app remove\n"
         << "bliss config app list\n"
         << "bliss --help\n";
 }
@@ -318,6 +318,240 @@ static std::string pick_app_path_manual(){
     return filtered[idx - 1];
 }
 
+static std::string pick_app_entry_fzf(const std::vector<std::string>& entries){
+    const char* no_fzf = std::getenv("BLISS_NO_FZF");
+    if(no_fzf && *no_fzf != '\0'){
+        return "";
+    }
+    if(!command_exists("fzf") || entries.empty()){
+        return "";
+    }
+    char tmpl[] = "/tmp/bliss_apps_XXXXXX";
+    int fd = mkstemp(tmpl);
+    if(fd < 0){
+        return "";
+    }
+    {
+        std::ofstream out(tmpl, std::ios::trunc);
+        for(const auto& e : entries){
+            out << e << "\n";
+        }
+    }
+    std::string cmd = std::string("cat '") + tmpl + "' | fzf";
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if(!pipe){
+        std::remove(tmpl);
+        return "";
+    }
+    char buf[512];
+    std::string selection;
+    if(fgets(buf, sizeof(buf), pipe)){
+        selection = buf;
+        selection.erase(selection.find_last_not_of("\r\n") + 1);
+    }
+    pclose(pipe);
+    std::remove(tmpl);
+    return selection;
+}
+
+static std::string pick_app_entry_manual(const std::vector<std::string>& entries){
+    if(entries.empty()){
+        return "";
+    }
+    std::cout << "select app entry to remove:\n";
+    for(size_t i = 0; i < entries.size(); ++i){
+        std::cout << "  [" << (i + 1) << "] " << entries[i] << "\n";
+    }
+    std::cout << "enter number: ";
+    std::string line;
+    if(!std::getline(std::cin, line)){
+        return "";
+    }
+    int idx = 0;
+    try{
+        idx = std::stoi(line);
+    }catch(...){
+        return "";
+    }
+    if(idx <= 0 || static_cast<size_t>(idx) > entries.size()){
+        return "";
+    }
+    return entries[idx - 1];
+}
+
+struct AppEntry {
+    std::string name;
+    std::string bundle;
+    std::string path;
+    std::string raw;
+};
+
+static std::string shorten_app_path(const std::string& path){
+    std::string short_path = path;
+    const char* home = std::getenv("HOME");
+    if(home && *home){
+        std::string home_prefix = std::string(home) + "/";
+        if(short_path.find(home_prefix) == 0){
+            short_path = "~/" + short_path.substr(home_prefix.size());
+        }
+    }
+    if(short_path.find("/Applications/") == 0){
+        short_path = short_path.substr(std::string("/Applications/").size());
+        short_path = "Apps/" + short_path;
+    }
+    return short_path;
+}
+
+static bool parse_app_line(const std::string& line, AppEntry& out){
+    out = {};
+    out.raw = line;
+    size_t bar = line.find('|');
+    if(bar == std::string::npos){
+        return false;
+    }
+    out.name = line.substr(0, bar);
+    std::string rest = line.substr(bar + 1);
+    std::stringstream ss(rest);
+    std::string item;
+    while(std::getline(ss, item, '|')){
+        if(item.rfind("bundle=", 0) == 0){
+            out.bundle = item.substr(7);
+        }else if(item.rfind("path=", 0) == 0){
+            out.path = item.substr(5);
+        }
+    }
+    return !out.name.empty();
+}
+
+static std::vector<AppEntry> parse_app_entries(const std::vector<std::string>& entries){
+    std::vector<AppEntry> out;
+    for(const auto& e : entries){
+        AppEntry a;
+        if(parse_app_line(e, a)){
+            out.push_back(a);
+            continue;
+        }
+        if(e.rfind("bundle:", 0) == 0){
+            AppEntry b;
+            b.name = e.substr(7);
+            b.bundle = b.name;
+            b.raw = e;
+            out.push_back(b);
+        }else if(e.rfind("path:", 0) == 0){
+            AppEntry p;
+            p.path = e.substr(5);
+            p.name = std::filesystem::path(p.path).stem().string();
+            p.raw = e;
+            out.push_back(p);
+        }else{
+            AppEntry u;
+            u.name = e;
+            u.raw = e;
+            out.push_back(u);
+        }
+    }
+    return out;
+}
+
+static std::vector<std::string> app_entry_display(const std::vector<AppEntry>& entries){
+    std::vector<std::string> lines;
+    for(const auto& e : entries){
+        std::string line = "\033[32m" + e.name + "\033[0m";
+        if(!e.bundle.empty()){
+            line += "  \033[90mbundle:" + e.bundle + "\033[0m";
+        }
+        if(!e.path.empty()){
+            line += "  \033[90m" + shorten_app_path(e.path) + "\033[0m";
+        }
+        lines.push_back(line);
+    }
+    return lines;
+}
+
+static std::vector<std::string> app_entry_display_plain(const std::vector<AppEntry>& entries){
+    std::vector<std::string> lines;
+    for(const auto& e : entries){
+        std::string line = e.name;
+        if(!e.bundle.empty()){
+            line += "  bundle:" + e.bundle;
+        }
+        if(!e.path.empty()){
+            line += "  " + shorten_app_path(e.path);
+        }
+        lines.push_back(line);
+    }
+    return lines;
+}
+
+static int pick_app_group_index_manual(const std::vector<std::string>& display){
+    if(display.empty()){
+        return -1;
+    }
+    std::cout << "select app to remove:\n";
+    for(size_t i = 0; i < display.size(); ++i){
+        std::cout << "  [" << (i + 1) << "] " << display[i] << "\n";
+    }
+    std::cout << "enter number: ";
+    std::string line;
+    if(!std::getline(std::cin, line)){
+        return -1;
+    }
+    int idx = 0;
+    try{
+        idx = std::stoi(line);
+    }catch(...){
+        return -1;
+    }
+    if(idx <= 0 || static_cast<size_t>(idx) > display.size()){
+        return -1;
+    }
+    return idx - 1;
+}
+
+static int pick_app_group_index_fzf(const std::vector<std::string>& display){
+    const char* no_fzf = std::getenv("BLISS_NO_FZF");
+    if(no_fzf && *no_fzf != '\0'){
+        return -1;
+    }
+    if(!command_exists("fzf") || display.empty()){
+        return -1;
+    }
+    char tmpl[] = "/tmp/bliss_app_groups_XXXXXX";
+    int fd = mkstemp(tmpl);
+    if(fd < 0){
+        return -1;
+    }
+    {
+        std::ofstream out(tmpl, std::ios::trunc);
+        for(const auto& e : display){
+            out << e << "\n";
+        }
+    }
+    std::string cmd = std::string("cat '") + tmpl + "' | fzf";
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if(!pipe){
+        std::remove(tmpl);
+        return -1;
+    }
+    char buf[1024];
+    std::string selection;
+    if(fgets(buf, sizeof(buf), pipe)){
+        selection = buf;
+        selection.erase(selection.find_last_not_of("\r\n") + 1);
+    }
+    pclose(pipe);
+    std::remove(tmpl);
+    if(selection.empty()){
+        return -1;
+    }
+    for(size_t i = 0; i < display.size(); ++i){
+        if(display[i] == selection){
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
 static std::string get_bundle_id_for_path(const std::string& app_path){
     std::string cmd = "/usr/bin/mdls -name kMDItemCFBundleIdentifier -raw \"" + app_path + "\" 2>/dev/null";
     FILE* pipe = popen(cmd.c_str(), "r");
@@ -363,7 +597,33 @@ static void print_status(){
     }else{
         std::cout << "remaining: 0m 0s\n";
     }
-    std::cout << "pf table active: " << (is_firewall_block_active() ? "yes" : "no") << "\n";
+    if(geteuid() == 0){
+        std::cout << "pf table active: " << (is_firewall_block_active() ? "yes" : "no") << "\n";
+        return;
+    }
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if(fd >= 0){
+        sockaddr_un addr{};
+        addr.sun_family = AF_UNIX;
+        std::snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", "/var/run/bliss.sock");
+        if(connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0){
+            std::string msg = "status\n";
+            write(fd, msg.c_str(), msg.size());
+            char buf[128];
+            ssize_t n = read(fd, buf, sizeof(buf) - 1);
+            if(n > 0){
+                buf[n] = '\0';
+                std::string resp(buf);
+                if(resp.rfind("pf:", 0) == 0){
+                    std::cout << "pf table active: " << resp.substr(3) << "\n";
+                    close(fd);
+                    return;
+                }
+            }
+        }
+        close(fd);
+    }
+    std::cout << "pf table active: unknown (requires root helper)\n";
 }
 
 static bool run_uninstall_script(){
@@ -653,10 +913,13 @@ int main(int argc, char* argv[]){
                     return 1;
                 }
                 std::string bundle = get_bundle_id_for_path(app_path);
+                std::string name = std::filesystem::path(app_path).stem().string();
+                std::string line = name + "|";
                 if(!bundle.empty()){
-                    add_block_app("bundle:" + bundle);
+                    line += "bundle=" + bundle + "|";
                 }
-                add_block_app("path:" + app_path);
+                line += "path=" + app_path;
+                add_block_app(line);
                 std::cout << "selected: " << app_path << "\n";
                 if(!bundle.empty()){
                     std::cout << "bundle: " << bundle << "\n";
@@ -665,11 +928,22 @@ int main(int argc, char* argv[]){
                 return 0;
             }
             if(action == "remove"){
-                if(argc < 5){
-                    std::cout << "[error] config app remove requires <app entry>\n";
+                std::vector<std::string> apps;
+                if(!load_app_list(apps)){
                     return 1;
                 }
-                if(!remove_block_app(argv[4])){
+                auto entries = parse_app_entries(apps);
+                auto display_plain = app_entry_display_plain(entries);
+                auto display_color = app_entry_display(entries);
+                int idx = pick_app_group_index_fzf(display_plain);
+                if(idx < 0){
+                    idx = pick_app_group_index_manual(display_color);
+                }
+                if(idx < 0 || static_cast<size_t>(idx) >= entries.size()){
+                    std::cout << "[error] no app selected\n";
+                    return 1;
+                }
+                if(!remove_block_app(entries[idx].raw)){
                     return 1;
                 }
                 std::cout << "removed app\n";
@@ -681,47 +955,63 @@ int main(int argc, char* argv[]){
                     return 1;
                 }
                 std::cout << "config: " << get_app_config_path() << "\n";
-                for(const auto& a : apps){
-                    std::cout << a << "\n";
+                auto entries = parse_app_entries(apps);
+                auto display = app_entry_display(entries);
+                if(display.empty()){
+                    std::cout << "(none)\n";
+                    return 0;
+                }
+                for(const auto& line : display){
+                    std::cout << line << "\n";
                 }
                 return 0;
             }
             print_usage();
             return 1;
         }
-        if(sub == "add"){
+        if(sub == "website"){
             if(argc < 4){
-                std::cout << "[error] config add requires <domain>\n";
+                print_usage();
                 return 1;
             }
-            if(!add_block_domain(argv[3])){
-                return 1;
+            string action = argv[3];
+            if(action == "add"){
+                if(argc < 5){
+                    std::cout << "[error] config website add requires <domain>\n";
+                    return 1;
+                }
+                if(!add_block_domain(argv[4])){
+                    return 1;
+                }
+                std::cout << "added domain\n";
+                return 0;
             }
-            std::cout << "added domain\n";
-            return 0;
+            if(action == "remove"){
+                if(argc < 5){
+                    std::cout << "[error] config website remove requires <domain>\n";
+                    return 1;
+                }
+                if(!remove_block_domain(argv[4])){
+                    return 1;
+                }
+                std::cout << "removed domain\n";
+                return 0;
+            }
+            if(action == "list"){
+                std::vector<std::string> domains;
+                if(!load_block_list(domains)){
+                    return 1;
+                }
+                std::cout << "config: " << get_config_path() << "\n";
+                for(const auto& d : domains){
+                    std::cout << d << "\n";
+                }
+                return 0;
+            }
+            print_usage();
+            return 1;
         }
-        if(sub == "remove"){
-            if(argc < 4){
-                std::cout << "[error] config remove requires <domain>\n";
-                return 1;
-            }
-            if(!remove_block_domain(argv[3])){
-                return 1;
-            }
-            std::cout << "removed domain\n";
-            return 0;
-        }
-        if(sub == "list"){
-            std::vector<std::string> domains;
-            if(!load_block_list(domains)){
-                return 1;
-            }
-            std::cout << "config: " << get_config_path() << "\n";
-            for(const auto& d : domains){
-                std::cout << d << "\n";
-            }
-            return 0;
-        }
+        std::cout << "[error] use: bliss config website <add|remove|list>\n";
         print_usage();
         return 1;
     }

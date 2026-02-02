@@ -276,6 +276,24 @@ bool remove_block_app(const std::string& app){
     return write_app_list(filtered);
 }
 
+bool remove_block_app_entries(const std::vector<std::string>& entries){
+    if(entries.empty()){
+        return true;
+    }
+    std::vector<std::string> apps;
+    if(!load_app_list(apps)){
+        return false;
+    }
+    std::set<std::string> remove_set(entries.begin(), entries.end());
+    std::vector<std::string> filtered;
+    for(const auto& a : apps){
+        if(remove_set.find(a) == remove_set.end()){
+            filtered.push_back(a);
+        }
+    }
+    return write_app_list(filtered);
+}
+
 static void flush_dns(){
     std::system("/usr/bin/dscacheutil -flushcache");
     std::system("/usr/bin/killall -HUP mDNSResponder");

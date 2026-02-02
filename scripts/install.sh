@@ -20,6 +20,7 @@ else
   sudo cp "${ROOT_DIR}/build/blissroot" "${INSTALL_BIN}/blissroot"
 fi
 sudo chmod 755 "${INSTALL_BIN}/bliss" "${INSTALL_BIN}/blissd" "${INSTALL_BIN}/blissroot"
+sudo /usr/bin/codesign --force --sign - "${INSTALL_BIN}/bliss" "${INSTALL_BIN}/blissd" "${INSTALL_BIN}/blissroot" >/dev/null 2>&1 || true
 
 echo "[bliss] install: shared files"
 sudo mkdir -p /usr/local/share/bliss

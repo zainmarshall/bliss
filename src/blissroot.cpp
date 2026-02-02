@@ -214,6 +214,10 @@ static bool handle_line(const std::string& line, std::string& out_msg){
     if(cmd == "uninstall"){
         return handle_uninstall(out_msg);
     }
+    if(cmd == "status"){
+        out_msg = std::string("pf: ") + (is_firewall_block_active() ? "yes" : "no");
+        return true;
+    }
     out_msg = "error: unknown command";
     return false;
 }

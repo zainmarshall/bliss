@@ -6,6 +6,7 @@
 #include <thread>
 #include <vector>
 #include <sys/stat.h>
+#include <sstream>
 
 static const char* kEndTimePath = "/var/db/bliss_end_time";
 
@@ -31,28 +32,40 @@ static void kill_blocked_apps(){
     if(!load_app_list(apps)) return;
     std::string uid = console_uid();
     for(const auto& entry : apps){
-        if(entry.rfind("bundle:", 0) == 0){
-            std::string bundle = entry.substr(7);
-            std::string cmd;
-            if(!uid.empty()){
-                cmd = "/bin/launchctl asuser " + uid + " /usr/bin/osascript -e 'tell application id \"" + bundle + "\" to quit' >/dev/null 2>&1";
-            }else{
-                cmd = "/usr/bin/osascript -e 'tell application id \"" + bundle + "\" to quit' >/dev/null 2>&1";
+        std::string bundle;
+        std::string path;
+        std::string name;
+        if(entry.rfind("bundle:", 0) == 0 || entry.rfind("path:", 0) == 0 || entry.rfind("proc:", 0) == 0){
+            if(entry.rfind("path:", 0) == 0){
+                path = entry.substr(5);
+            }else if(entry.rfind("proc:", 0) == 0){
+                name = entry.substr(5);
             }
-            std::system(cmd.c_str());
-            continue;
+        }else{
+            size_t bar = entry.find('|');
+            if(bar != std::string::npos){
+                name = entry.substr(0, bar);
+                std::string rest = entry.substr(bar + 1);
+                std::stringstream ss(rest);
+                std::string item;
+                while(std::getline(ss, item, '|')){
+                    if(item.rfind("bundle=", 0) == 0){
+                        bundle = item.substr(7);
+                    }else if(item.rfind("path=", 0) == 0){
+                        path = item.substr(5);
+                    }
+                }
+            }
         }
-        if(entry.rfind("path:", 0) == 0){
-            std::string path = entry.substr(5);
+        if(!path.empty()){
             std::string pkill_path = "/usr/bin/pkill -f \"" + path + "/Contents/\" >/dev/null 2>&1";
             std::system(pkill_path.c_str());
-            continue;
         }
-        if(entry.rfind("proc:", 0) == 0){
-            std::string name = entry.substr(5);
+        if(!name.empty()){
             std::string pkill_name = "/usr/bin/pkill -x \"" + name + "\" >/dev/null 2>&1";
             std::system(pkill_name.c_str());
         }
+        (void)bundle;
     }
 }
 
