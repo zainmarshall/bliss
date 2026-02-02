@@ -17,13 +17,6 @@ using std::string;
 static const char* kHostsPath = "/etc/hosts";
 static const char* kBlockStart = "# bliss-block start";
 static const char* kBlockEnd = "# bliss-block end";
-static const char* kDefaultDomains[] = {
-    "youtube.com",
-    "www.youtube.com",
-    "m.youtube.com",
-    "youtu.be"
-};
-static const size_t kDefaultDomainCount = sizeof(kDefaultDomains) / sizeof(kDefaultDomains[0]);
 static std::string g_config_path_override;
 
 static std::string get_config_dir_from_override(){
@@ -107,10 +100,54 @@ void set_config_path_override(const std::string& path){
     g_config_path_override = path;
 }
 
+std::string get_quotes_config_path(){
+    if(!g_config_path_override.empty()){
+        std::string dir = get_config_dir_from_override();
+        if(!dir.empty()){
+            return dir + "/quotes.txt";
+        }
+    }
+    return get_config_dir() + "/quotes.txt";
+}
+
 static bool ensure_config_dir(){
     std::error_code ec;
     std::filesystem::create_directories(get_config_dir(), ec);
     return !ec;
+}
+
+bool write_quotes_length(const std::string& value){
+    if(!ensure_config_dir()){
+        std::cout << "[error] unable to create config directory (check permissions)\n";
+        return false;
+    }
+    std::ofstream out(get_quotes_config_path(), std::ios::trunc);
+    if(!out.is_open()){
+        std::cout << "[error] unable to write quotes config (check permissions)\n";
+        return false;
+    }
+    out << value << "\n";
+    return true;
+}
+
+bool read_quotes_length(std::string& value){
+    std::ifstream in(get_quotes_config_path());
+    if(!in.is_open()){
+        value = "medium";
+        return true;
+    }
+    std::string line;
+    if(!std::getline(in, line)){
+        value = "medium";
+        return true;
+    }
+    line = trim(line);
+    if(line.empty()){
+        value = "medium";
+        return true;
+    }
+    value = line;
+    return true;
 }
 
 static bool write_block_list(const std::vector<std::string>& domains){
@@ -134,9 +171,6 @@ bool load_block_list(std::vector<std::string>& out_domains){
     out_domains.clear();
     std::ifstream in(get_config_path());
     if(!in.is_open()){
-        for(size_t i = 0; i < kDefaultDomainCount; ++i){
-            out_domains.push_back(kDefaultDomains[i]);
-        }
         return write_block_list(out_domains);
     }
 
@@ -151,12 +185,6 @@ bool load_block_list(std::vector<std::string>& out_domains){
         }
     }
     in.close();
-
-    if(uniq.empty()){
-        for(size_t i = 0; i < kDefaultDomainCount; ++i){
-            uniq.insert(kDefaultDomains[i]);
-        }
-    }
 
     for(const auto& d : uniq){
         out_domains.push_back(d);
@@ -324,6 +352,9 @@ bool apply_hosts_block(){
     std::vector<std::string> domains;
     if(!load_block_list(domains)){
         return false;
+    }
+    if(domains.empty()){
+        return true;
     }
 
     out << kBlockStart << "\n";

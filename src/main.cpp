@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/ioctl.h>
 #include <cstdio>
 #include <filesystem>
 #include <algorithm>
@@ -29,17 +30,18 @@ static const char* kMenubarLabel = "com.bliss.menubar";
 
 static void print_usage(){
     std::cout
-        << "bliss start <minutes>\n"
-        << "bliss panic\n"
-        << "bliss status\n"
-        << "bliss uninstall\n"
-        << "bliss config website add <domain>\n"
-        << "bliss config website remove <domain>\n"
-        << "bliss config website list\n"
-        << "bliss config app add\n"
-        << "bliss config app remove\n"
-        << "bliss config app list\n"
-        << "bliss --help\n";
+        << "bliss start <minutes>           Start a focus lock for N minutes\n"
+        << "bliss panic                     Early exit (typing challenge)\n"
+        << "bliss status                    Show remaining time + firewall state\n"
+        << "bliss uninstall                 Remove Bliss (requires puzzle)\n"
+        << "bliss config website add <url>  Add a blocked website\n"
+        << "bliss config website remove <url> Remove a blocked website\n"
+        << "bliss config website list       List blocked websites\n"
+        << "bliss config app add            Add an app to block (picker)\n"
+        << "bliss config app remove         Remove a blocked app (picker)\n"
+        << "bliss config app list           List blocked apps\n"
+        << "bliss config quotes <short|medium|long|huge>  Quote length for panic\n"
+        << "bliss --help                    Show this help\n";
 }
 
 class TerminalRawMode {
@@ -65,9 +67,24 @@ private:
     bool enabled;
 };
 
+static int terminal_width(){
+    struct winsize w{};
+    if(ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == 0 && w.ws_col > 0){
+        return static_cast<int>(w.ws_col);
+    }
+    return 80;
+}
+
 static void render_prompt(const std::string& prompt, const std::string& typed){
-    std::cout << "\r\033[2K";
+    int width = terminal_width();
+    if(width < 20) width = 20;
+    std::cout << "\033[H\033[J";
+    size_t col = 0;
     for(size_t i = 0; i < prompt.size(); ++i){
+        if(col >= static_cast<size_t>(width)){
+            std::cout << "\n";
+            col = 0;
+        }
         if(i < typed.size()){
             if(typed[i] == prompt[i]){
                 std::cout << "\033[32m" << prompt[i] << "\033[0m";
@@ -77,17 +94,24 @@ static void render_prompt(const std::string& prompt, const std::string& typed){
         }else{
             std::cout << "\033[90m" << prompt[i] << "\033[0m";
         }
+        col++;
     }
     std::cout << std::flush;
 }
 
 static bool typing_test(double& out_accuracy){
-    const char* quotes_path = "quotes.txt";
     const char* quotes_fallback = "/usr/local/share/bliss/quotes.txt";
+    std::string length = "medium";
+    read_quotes_length(length);
+    std::string quotes_path = "quotes.txt";
+    if(length == "short" || length == "medium" || length == "long" || length == "huge"){
+        quotes_path = "quotes/" + length + ".txt";
+    }
     std::vector<std::string> kQuotes;
     std::ifstream quotes_file(quotes_path);
     if(!quotes_file.is_open()){
-        quotes_file.open(quotes_fallback);
+        std::string fallback_path = "/usr/local/share/bliss/quotes/" + length + ".txt";
+        quotes_file.open(fallback_path);
     }
     if(quotes_file.is_open()){
         std::string line;
@@ -171,7 +195,7 @@ static bool send_to_root_helper(const std::string& line){
     std::snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", "/var/run/bliss.sock");
     if(connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0){
         close(fd);
-        std::cout << "unable to reach bliss root helper (try: sudo bliss " << line << ")\n";
+        std::cout << "unable to reach bliss root helper (try: sudo bliss ...)\n";
         return false;
     }
     std::string msg = line + "\n";
@@ -836,6 +860,11 @@ int main(int argc, char* argv[]){
 
     if(command == "panic"){
         bool is_root = geteuid() == 0;
+        long long end_time = 0;
+        if(!read_end_time(end_time)){
+            std::cout << "no active session; nothing to panic\n";
+            return 0;
+        }
         double accuracy = 0.0;
         if(!typing_test(accuracy)){
             std::cout << "puzzle failed (still blocked)\n";
@@ -865,6 +894,10 @@ int main(int argc, char* argv[]){
     }
     if(command == "uninstall"){
         bool is_root = geteuid() == 0;
+        if(!is_root){
+            std::cout << "uninstall requires sudo: sudo bliss uninstall\n";
+            return 1;
+        }
         double accuracy = 0.0;
         if(!typing_test(accuracy)){
             std::cout << "puzzle failed (still installed)\n";
@@ -872,13 +905,6 @@ int main(int argc, char* argv[]){
             return 1;
         }
         std::cout << "target: 95%, actual: " << static_cast<int>(accuracy + 0.5) << "%\n";
-        if(!is_root){
-            if(!send_to_root_helper("uninstall")){
-                return 1;
-            }
-            std::cout << "uninstall complete\n";
-            return 0;
-        }
         if(!run_uninstall_script()){
             return 1;
         }
@@ -890,6 +916,14 @@ int main(int argc, char* argv[]){
         if(argc < 3){
             print_usage();
             return 1;
+        }
+        long long end_time = 0;
+        if(read_end_time(end_time)){
+            auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+            if(end_time > static_cast<long long>(now)){
+                std::cout << "[error] config is locked while a session is active\n";
+                return 1;
+            }
         }
         string sub = argv[2];
         if(sub == "app"){
@@ -954,11 +988,10 @@ int main(int argc, char* argv[]){
                 if(!load_app_list(apps)){
                     return 1;
                 }
-                std::cout << "config: " << get_app_config_path() << "\n";
                 auto entries = parse_app_entries(apps);
                 auto display = app_entry_display(entries);
                 if(display.empty()){
-                    std::cout << "(none)\n";
+                    std::cout << "no entries\n";
                     return 0;
                 }
                 for(const auto& line : display){
@@ -1002,7 +1035,10 @@ int main(int argc, char* argv[]){
                 if(!load_block_list(domains)){
                     return 1;
                 }
-                std::cout << "config: " << get_config_path() << "\n";
+                if(domains.empty()){
+                    std::cout << "no entries\n";
+                    return 0;
+                }
                 for(const auto& d : domains){
                     std::cout << d << "\n";
                 }
@@ -1010,6 +1046,22 @@ int main(int argc, char* argv[]){
             }
             print_usage();
             return 1;
+        }
+        if(sub == "quotes"){
+            if(argc < 4){
+                std::cout << "[error] options: short, medium, long, huge\n";
+                return 1;
+            }
+            std::string q = argv[3];
+            if(q != "short" && q != "medium" && q != "long" && q != "huge"){
+                std::cout << "[error] options: short, medium, long, huge\n";
+                return 1;
+            }
+            if(!write_quotes_length(q)){
+                return 1;
+            }
+            std::cout << "quotes: " << q << "\n";
+            return 0;
         }
         std::cout << "[error] use: bliss config website <add|remove|list>\n";
         print_usage();

@@ -19,3 +19,6 @@ bool add_block_app(const std::string& app);
 bool remove_block_app(const std::string& app);
 bool remove_block_app_entries(const std::vector<std::string>& entries);
 std::string get_app_config_path();
+std::string get_quotes_config_path();
+bool write_quotes_length(const std::string& value);
+bool read_quotes_length(std::string& value);

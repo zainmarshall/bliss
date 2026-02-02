@@ -142,6 +142,9 @@ bool apply_firewall_block(){
     if(!load_block_list(domains)){
         return false;
     }
+    if(domains.empty()){
+        return true;
+    }
     std::set<string> ips;
     for(const auto& d : domains){
         auto resolved = resolve_domain_ips(d);

@@ -24,7 +24,12 @@ sudo /usr/bin/codesign --force --sign - "${INSTALL_BIN}/bliss" "${INSTALL_BIN}/b
 
 echo "[bliss] install: shared files"
 sudo mkdir -p /usr/local/share/bliss
-sudo cp "${ROOT_DIR}/quotes.txt" /usr/local/share/bliss/quotes.txt
+if [[ -d "${ROOT_DIR}/quotes" ]]; then
+  sudo mkdir -p /usr/local/share/bliss/quotes
+  sudo cp "${ROOT_DIR}/quotes/"*.txt /usr/local/share/bliss/quotes/
+else
+  sudo cp "${ROOT_DIR}/quotes.txt" /usr/local/share/bliss/quotes.txt
+fi
 sudo cp "${ROOT_DIR}/scripts/uninstall.sh" /usr/local/share/bliss/uninstall.sh
 sudo chmod 755 /usr/local/share/bliss/uninstall.sh
 
@@ -32,7 +37,17 @@ echo "[bliss] install: menubar"
 bash "${ROOT_DIR}/scripts/install_menubar.sh"
 
 echo "[bliss] install: root helper"
-sudo cp "${ROOT_DIR}/root/com.bliss.root.plist" /Library/LaunchDaemons/com.bliss.root.plist
+ROOT_PLIST=""
+if [[ -f "${ROOT_DIR}/root/com.bliss.root.plist" ]]; then
+  ROOT_PLIST="${ROOT_DIR}/root/com.bliss.root.plist"
+elif [[ -f "${ROOT_DIR}/root.plist" ]]; then
+  ROOT_PLIST="${ROOT_DIR}/root.plist"
+fi
+if [[ -z "${ROOT_PLIST}" ]]; then
+  echo "[bliss] install: missing com.bliss.root.plist"
+else
+  sudo cp "${ROOT_PLIST}" /Library/LaunchDaemons/com.bliss.root.plist
+fi
 sudo /bin/launchctl bootout system/com.bliss.root 2>/dev/null || true
 retry=0
 while true; do
