@@ -4,7 +4,8 @@ Bliss is a macOS focus lock that blocks distracting websites and force‑closes 
 # MACOS Only. To all Windows and Linux users of Flavortown, please watch the following video demo to get a full understanding of the app! 
 
 ## Video Demo
-insert video here
+https://github.com/user-attachments/assets/8482347b-8e83-4ea9-911a-1a47bd3a1aec
+
 ## What it does
 
 - Blocks websites via /etc/hosts + pf firewall table
@@ -13,16 +14,24 @@ insert video here
 - Menubar timer (always‑on status)
 - Panic mode typing challenge
 
-## Quick start
-
-- Install using this command 
- ```bash
+## Installation Instructions
+1. Download and run the release installer:
+  ```bash
 curl -fsSL https://github.com/zainmarshall/bliss/releases/download/v0.1.0/bliss-macos-universal.zip -o /tmp/bliss.zip && \
   rm -rf /tmp/bliss && mkdir -p /tmp/bliss && \
   unzip -q /tmp/bliss.zip -d /tmp/bliss && \
   bash /tmp/bliss/bliss_release/scripts/install.sh
 ```
-- `bliss config website add <domain>`
+NOTE: If you every on install see this error:
+Bootstrap failed: 5: Input/output error
+Try re-running the command as root for richer errors.
+Just re-run the command. That should fix it.
+2. Verify:
+`bliss --help`
+4. Configure it:
+`bliss config website add <DOMAIN OF WEBSITE TO BLOCK>`
+`bliss config app add` - Will open a menu to select which apps to block
+`bliss config website list` `bliss config app list` - List blocked apps
 NOTE: Bliss comes with nothing configured by default, like no apps and websites blocked, so if you start it from the start it'll block nothing and throw an error. Make sure you configure it. 
 - `bliss config app add` (This will open a menu for you to select apps)
 - `bliss config browser add` (This will open a menu for you to select browsers to close on start)
@@ -53,3 +62,6 @@ Notes
 - **Menubar:** lightweight Swift status app shows the countdown.
 - **Root helper:** `blissroot` runs as a LaunchDaemon so users don’t need sudo after install.
 - **Config:** `~/.config/bliss/blocks.txt` stores blocked domains.
+
+## Devlogs
+Read the devlogs at: https://flavortown.hackclub.com/projects/11291 
