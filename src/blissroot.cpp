@@ -182,16 +182,6 @@ static bool handle_panic(std::string& out_msg){
     return true;
 }
 
-static bool handle_flush(std::string& out_msg){
-    unload_launchd_job();
-    remove_end_time();
-    remove_hosts_block();
-    remove_firewall_block();
-    drop_web_states();
-    out_msg = "ok";
-    return true;
-}
-
 static bool run_uninstall_script(){
     const char* script_paths[] = {
         "/usr/local/share/bliss/uninstall.sh",
@@ -256,9 +246,6 @@ static bool handle_line(const std::string& line, std::string& out_msg){
     }
     if(cmd == "panic"){
         return handle_panic(out_msg);
-    }
-    if(cmd == "flush"){
-        return handle_flush(out_msg);
     }
     if(cmd == "uninstall"){
         return handle_uninstall(out_msg);

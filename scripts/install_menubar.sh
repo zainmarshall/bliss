@@ -6,6 +6,18 @@ echo "[bliss] menubar: preparing..."
 PREBUILT_BIN="${ROOT_DIR}/menubar/blissbar"
 BUILD_DIR="${ROOT_DIR}/menubar/build"
 BIN="${BUILD_DIR}/blissbar"
+SRC="${ROOT_DIR}/menubar/main.swift"
+PLIST_SRC="${ROOT_DIR}/menubar/com.bliss.menubar.plist"
+
+if [[ ! -f "${PREBUILT_BIN}" && ! -f "${SRC}" ]]; then
+  echo "[bliss] menubar: not found in release package; skipping"
+  exit 0
+fi
+
+if [[ ! -f "${PLIST_SRC}" ]]; then
+  echo "[bliss] menubar: plist missing; skipping"
+  exit 0
+fi
 
 if [[ -f "${PREBUILT_BIN}" ]]; then
   echo "[bliss] menubar: using prebuilt binary"
@@ -13,7 +25,6 @@ if [[ -f "${PREBUILT_BIN}" ]]; then
   cp "${PREBUILT_BIN}" "${BIN}"
 else
   echo "[bliss] menubar: building from source"
-  SRC="${ROOT_DIR}/menubar/main.swift"
   mkdir -p "${BUILD_DIR}"
   /usr/bin/swiftc -framework Cocoa "${SRC}" -o "${BIN}"
 fi
@@ -24,7 +35,7 @@ echo "[bliss] menubar: installing"
 mkdir -p "${INSTALL_DIR}"
 cp "${BIN}" "${INSTALL_DIR}/blissbar"
 
-sed "s|__BLISSBAR_PATH__|${INSTALL_DIR}/blissbar|g" "${ROOT_DIR}/menubar/com.bliss.menubar.plist" > "${LAUNCH_AGENT}"
+sed "s|__BLISSBAR_PATH__|${INSTALL_DIR}/blissbar|g" "${PLIST_SRC}" > "${LAUNCH_AGENT}"
 
 chmod 644 "${LAUNCH_AGENT}"
 chmod 755 "${INSTALL_DIR}/blissbar"

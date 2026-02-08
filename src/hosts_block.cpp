@@ -7,6 +7,7 @@
 #include <limits.h>
 #include <fstream>
 #include <iostream>
+#include <sys/stat.h>
 #include <set>
 #include <sstream>
 #include <string>
@@ -311,9 +312,27 @@ bool remove_block_domain(const std::string& domain){
         if(!base.empty()){
             remove_set.insert(base);
         }
-    }
-    if(cleaned.find('.') != std::string::npos && cleaned.find('.') == cleaned.rfind('.')){
+    }else{
         remove_set.insert("www." + cleaned);
+    }
+    if(cleaned == "youtube.com" || cleaned == "www.youtube.com"){
+        const char* legacy_extras[] = {
+            "googlevideo.com",
+            "ytimg.com",
+            "yt3.ggpht.com",
+            "yt4.ggpht.com",
+            "yt5.ggpht.com",
+            "yt6.ggpht.com",
+            "yt7.ggpht.com",
+            "yt8.ggpht.com",
+            "yt9.ggpht.com",
+            "youtube.googleapis.com",
+            "youtubei.googleapis.com",
+            "ytimg.l.google.com"
+        };
+        for(const auto* extra : legacy_extras){
+            remove_set.insert(extra);
+        }
     }
     std::vector<std::string> domains;
     if(!load_block_list(domains)){
@@ -425,32 +444,52 @@ static void flush_dns(){
     std::system("/usr/bin/killall -HUP mDNSResponder");
 }
 
-void kill_browser_apps(){
-    const char* defaults[] = {
-        "Safari",
-        "Google Chrome",
-        "Google Chrome Helper",
-        "Brave Browser",
-        "Brave Browser Helper",
-        "Firefox",
-        "Firefox Developer Edition",
-        "Arc",
-        "Microsoft Edge",
-        "Opera"
-    };
-    std::set<std::string> names;
-    for(const auto* name : defaults){
-        names.insert(name);
+static bool process_running(const std::string& name){
+    std::string cmd = std::string("/usr/bin/pgrep -x \"") + name + "\" >/dev/null 2>&1";
+    return std::system(cmd.c_str()) == 0;
+}
+
+static uid_t get_console_uid(){
+    struct stat st{};
+    if(stat("/dev/console", &st) == 0){
+        return st.st_uid;
     }
-    std::vector<std::string> extra;
-    if(load_browser_list(extra)){
-        for(const auto& name : extra){
-            names.insert(name);
+    return 0;
+}
+
+static void reopen_app_as_user(const std::string& name){
+    uid_t uid = get_console_uid();
+    if(uid != 0){
+        std::string cmd = std::string("/bin/launchctl asuser ") + std::to_string(uid) +
+                          " /usr/bin/open -a \"" + name + "\" >/dev/null 2>&1";
+        if(std::system(cmd.c_str()) == 0){
+            return;
         }
     }
-    for(const auto& name : names){
+    std::string fallback = std::string("/usr/bin/open -a \"") + name + "\" >/dev/null 2>&1";
+    std::system(fallback.c_str());
+}
+
+void kill_browser_apps(){
+    std::vector<std::string> extra;
+    if(!load_browser_list(extra) || extra.empty()){
+        return;
+    }
+    std::vector<std::string> reopen;
+    for(const auto& name : extra){
+        if(name.find("Helper") != std::string::npos){
+            continue;
+        }
+        if(process_running(name)){
+            reopen.push_back(name);
+        }
+    }
+    for(const auto& name : extra){
         std::string cmd = std::string("/usr/bin/pkill -x \"") + name + "\" >/dev/null 2>&1";
         std::system(cmd.c_str());
+    }
+    for(const auto& name : reopen){
+        reopen_app_as_user(name);
     }
 }
 

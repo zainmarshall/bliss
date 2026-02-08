@@ -946,7 +946,6 @@ int main(int argc, char* argv[]){
             std::vector<std::string> domains;
             load_block_list(domains);
             std::cout << "blocking " << domains.size() << " domains\n";
-            std::cout << "note: browsers will be closed; save work first\n";
             return 0;
         }
         // Ensure DNS resolution isn't poisoned by existing hosts block.
@@ -981,7 +980,6 @@ int main(int argc, char* argv[]){
         load_block_list(domains);
         std::cout << "lockdown started for " << minutes << " minutes\n";
         std::cout << "blocking " << domains.size() << " domains\n";
-        std::cout << "note: browsers will be closed; save work first\n";
         return 0;
     }
 
@@ -1028,24 +1026,12 @@ int main(int argc, char* argv[]){
         if(!repair_root_helper()){
             return 1;
         }
-        std::cout << "repaired root helper\n";
-        return 0;
-    }
-    if(command == "flush"){
-        bool is_root = geteuid() == 0;
-        if(!is_root){
-            if(!send_to_root_helper("flush")){
-                return 1;
-            }
-            std::cout << "flushed\n";
-            return 0;
-        }
         unload_launchd_job();
         remove_end_time();
         remove_hosts_block();
         remove_firewall_block();
         drop_web_states();
-        std::cout << "flushed\n";
+        std::cout << "repaired and flushed\n";
         return 0;
     }
     if(command == "uninstall"){
@@ -1093,6 +1079,23 @@ int main(int argc, char* argv[]){
                 if(!is_root && !ensure_config_ownership()){
                     return 1;
                 }
+                std::string app_path;
+                if(argc >= 5){
+                    app_path = argv[4];
+                }else{
+                    app_path = pick_app_path_fzf();
+                    if(app_path.empty()){
+                        app_path = pick_app_path_manual();
+                    }
+                }
+                if(app_path.empty()){
+                    std::cout << "[error] no app selected (install fzf or pass a .app path)\n";
+                    return 1;
+                }
+                std::string bundle = get_bundle_id_for_path(app_path);
+                std::string name = std::filesystem::path(app_path).stem().string();
+                std::string line = name + "|";
+                if(!bundle.empty()){
                     line += "bundle=" + bundle + "|";
                 }
                 line += "path=" + app_path;
@@ -1102,12 +1105,7 @@ int main(int argc, char* argv[]){
                     std::cout << "bundle: " << bundle << "\n";
                 }
                 std::cout << "added app\n";
-                unload_launchd_job();
-                remove_end_time();
-                remove_hosts_block();
-                remove_firewall_block();
-                drop_web_states();
-                std::cout << "repaired and flushed\n";
+                return 0;
             }
             if(action == "remove"){
                 if(!is_root && !ensure_config_ownership()){
@@ -1256,6 +1254,7 @@ int main(int argc, char* argv[]){
                     return 1;
                 }
                 std::cout << "added browser: " << name << "\n";
+                std::cout << "note: browsers will be closed on start; save work first\n";
                 return 0;
             }
             if(action == "remove"){

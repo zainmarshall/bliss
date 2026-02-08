@@ -17,25 +17,25 @@ https://github.com/user-attachments/assets/8482347b-8e83-4ea9-911a-1a47bd3a1aec
 ## Installation Instructions
 1. Download and run the release installer:
   ```bash
-curl -fsSL https://github.com/zainmarshall/bliss/releases/download/v0.1.0/bliss-macos-universal.zip -o /tmp/bliss.zip && \
+curl -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" \
+  "https://github.com/zainmarshall/bliss/releases/download/v0.2.0/bliss-macos-universal.zip?cachebust=$(date +%s)" \
+  -o /tmp/bliss.zip && \
   rm -rf /tmp/bliss && mkdir -p /tmp/bliss && \
   unzip -q /tmp/bliss.zip -d /tmp/bliss && \
   bash /tmp/bliss/bliss_release/scripts/install.sh
 ```
-NOTE: If you every on install see this error:
+NOTE: If you ever see this error during install:
 Bootstrap failed: 5: Input/output error
-Try re-running the command as root for richer errors.
-Just re-run the command. That should fix it.
+Re-run the command (or run as root for richer errors). It should succeed.
 2. Verify:
 `bliss --help`
-4. Configure it:
-`bliss config website add <DOMAIN OF WEBSITE TO BLOCK>`
-`bliss config app add` - Will open a menu to select which apps to block
-`bliss config website list` `bliss config app list` - List blocked apps
-NOTE: Bliss comes with nothing configured by default, like no apps and websites blocked, so if you start it from the start it'll block nothing and throw an error. Make sure you configure it. 
-- `bliss config app add` (This will open a menu for you to select apps)
-- `bliss config browser add` (This will open a menu for you to select browsers to close on start)
-- `bliss start <minutes>`
+3. Configure it:
+- `bliss config website add <DOMAIN>`
+- `bliss config app add` (picker)
+- `bliss config browser add` (picker)
+- `bliss config website list` / `bliss config app list` to verify
+NOTE: Bliss comes with nothing configured by default. If you don’t add sites/apps/browsers, nothing will be blocked.
+4. Run it: `bliss start <minutes>`
 
 Commands
 
@@ -53,10 +53,11 @@ Commands
 - bliss config quotes short/medium/long/huge - Configure the length of quotes used in the typing challenges. 
 
 Notes
-- Starting a session closes browsers and resets web connections. Save your work first.
+- Starting a session closes and reopens configured browsers to reset web connections. Save your work first.
+- By default nothing is blocked and no browsers are closed until you configure them.
 
 ## Architecture & Logistics
-- **CLI Commands:** `bliss start`, `bliss panic`, `bliss config`, `bliss status`.
+- **CLI Commands:** `bliss start`, `bliss panic`, `bliss status`, `bliss repair`, `bliss config`, `bliss uninstall`.
 - **Blocking layers:** `/etc/hosts` plus a pf firewall table for stronger, browser-agnostic blocking.
 - **Timer daemon:** `blissd` runs in the background via launchd and unblocks when time is up.
 - **Menubar:** lightweight Swift status app shows the countdown.

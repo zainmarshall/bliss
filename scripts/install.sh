@@ -65,3 +65,14 @@ done
 sudo /bin/launchctl kickstart -k system/com.bliss.root 2>/dev/null || true
 
 echo "[bliss] install: done"
+
+echo ""
+echo "Quickstart"
+echo "  1) Configure block list: bliss config website add example.com"
+echo "  2) Add apps to block:    bliss config app add"
+echo "  3) Add browsers to close: bliss config browser add"
+echo "  4) Start a session:      bliss start 45"
+echo ""
+echo "Notes"
+echo "  - Bliss ships with nothing configured by default."
+echo "  - Browsers listed in config will be closed on start; save work first."
