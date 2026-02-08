@@ -3,6 +3,7 @@
 #include <arpa/inet.h>
 #include <chrono>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <netinet/in.h>
@@ -117,6 +118,7 @@ static bool cleanup_if_stale(){
     remove_firewall_block();
     remove_hosts_block();
     remove_end_time();
+    unload_launchd_job();
     return true;
 }
 
@@ -127,16 +129,32 @@ static bool handle_start(int minutes, const std::string& config_path, std::strin
     }
     cleanup_if_stale();
     if(is_launchd_job_loaded()){
-        unload_launchd_job();
+        long long end_time = 0;
+        if(!read_end_time(end_time)){
+            unload_launchd_job();
+        }else{
+            auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+            if(end_time <= static_cast<long long>(now)){
+                remove_end_time();
+                unload_launchd_job();
+            }
+        }
     }
-    if(!apply_hosts_block()){
-        log_line("apply_hosts_block failed");
-        out_msg = "error: hosts block failed (see /tmp/blissroot.err)\n";
+    if(is_launchd_job_loaded()){
+        out_msg = "error: session already running; wait or use panic\n";
         return false;
     }
+    remove_hosts_block();
     if(!apply_firewall_block()){
         log_line("apply_firewall_block failed");
         out_msg = "error: firewall block failed (see /tmp/blissroot.err)\n";
+        return false;
+    }
+    kill_browser_apps();
+    drop_web_states();
+    if(!apply_hosts_block()){
+        log_line("apply_hosts_block failed");
+        out_msg = "error: hosts block failed (see /tmp/blissroot.err)\n";
         return false;
     }
     if(!write_end_time(minutes)){
@@ -160,6 +178,16 @@ static bool handle_panic(std::string& out_msg){
         return false;
     }
     remove_firewall_block();
+    out_msg = "ok";
+    return true;
+}
+
+static bool handle_flush(std::string& out_msg){
+    unload_launchd_job();
+    remove_end_time();
+    remove_hosts_block();
+    remove_firewall_block();
+    drop_web_states();
     out_msg = "ok";
     return true;
 }
@@ -190,6 +218,24 @@ static bool handle_uninstall(std::string& out_msg){
     return true;
 }
 
+static bool chown_recursive(const std::string& path, uid_t uid, gid_t gid){
+    std::error_code ec;
+    if(!std::filesystem::exists(path, ec)){
+        return true;
+    }
+    bool ok = true;
+    if(chown(path.c_str(), uid, gid) != 0){
+        ok = false;
+    }
+    for(std::filesystem::recursive_directory_iterator it(path, ec), end; it != end && !ec; it.increment(ec)){
+        const auto& p = it->path();
+        if(chown(p.c_str(), uid, gid) != 0){
+            ok = false;
+        }
+    }
+    return ok;
+}
+
 static bool handle_line(const std::string& line, std::string& out_msg){
     std::istringstream iss(line);
     std::string cmd;
@@ -211,8 +257,31 @@ static bool handle_line(const std::string& line, std::string& out_msg){
     if(cmd == "panic"){
         return handle_panic(out_msg);
     }
+    if(cmd == "flush"){
+        return handle_flush(out_msg);
+    }
     if(cmd == "uninstall"){
         return handle_uninstall(out_msg);
+    }
+    if(cmd == "fix-config"){
+        uid_t uid = 0;
+        gid_t gid = 0;
+        iss >> uid >> gid;
+        std::string path;
+        std::getline(iss, path);
+        if(!path.empty() && path[0] == ' '){
+            path.erase(0, path.find_first_not_of(' '));
+        }
+        if(path.empty()){
+            out_msg = "error: missing path";
+            return false;
+        }
+        if(!chown_recursive(path, uid, gid)){
+            out_msg = "error: chown failed";
+            return false;
+        }
+        out_msg = "ok";
+        return true;
     }
     if(cmd == "status"){
         out_msg = std::string("pf: ") + (is_firewall_block_active() ? "yes" : "no");

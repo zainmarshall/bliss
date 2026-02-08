@@ -25,6 +25,7 @@ curl -fsSL https://github.com/zainmarshall/bliss/releases/download/v0.1.0/bliss-
 - `bliss config website add <domain>`
 NOTE: Bliss comes with nothing configured by default, like no apps and websites blocked, so if you start it from the start it'll block nothing and throw an error. Make sure you configure it. 
 - `bliss config app add` (This will open a menu for you to select apps)
+- `bliss config browser add` (This will open a menu for you to select browsers to close on start)
 - `bliss start <minutes>`
 
 Commands
@@ -32,12 +33,18 @@ Commands
 - bliss start <minutes> - Starts a timer for <minutes> minutes
 - bliss panic - Escape a block early by completing a typing challenge.
 - bliss status - Status of the timer and pf table
+- bliss repair - Repair the root helper and clear state (requires sudo)
 - bliss uninstall - Uninstalls everything. Must run with sudo. Requires a typing challenge. 
 - bliss config website add/remove <domain> - Add or remove websites from block
 - bliss config website list - list blocked websites
 - bliss config app add/remove - Opens a menu to select apps to add / remove from the block
 - bliss config app list - list blocked apps
+- bliss config browser add/remove - Opens a menu to select browsers to close on start
+- bliss config browser list - list extra browsers to close
 - bliss config quotes short/medium/long/huge - Configure the length of quotes used in the typing challenges. 
+
+Notes
+- Starting a session closes browsers and resets web connections. Save your work first.
 
 ## Architecture & Logistics
 - **CLI Commands:** `bliss start`, `bliss panic`, `bliss config`, `bliss status`.

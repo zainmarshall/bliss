@@ -131,6 +131,13 @@ static bool load_pf_table(const std::set<string>& ips){
     return true;
 }
 
+static void kill_pf_states_for_ips(const std::set<string>& ips){
+    for(const auto& ip : ips){
+        std::string cmd = string("/sbin/pfctl -k ") + ip + " >/dev/null 2>&1";
+        std::system(cmd.c_str());
+    }
+}
+
 bool apply_firewall_block(){
     if(!ensure_pf_anchor_files()){
         return false;
@@ -150,7 +157,12 @@ bool apply_firewall_block(){
         auto resolved = resolve_domain_ips(d);
         ips.insert(resolved.begin(), resolved.end());
     }
-    return load_pf_table(ips);
+    if(!load_pf_table(ips)){
+        return false;
+    }
+    // Drop existing connections to newly blocked IPs.
+    kill_pf_states_for_ips(ips);
+    return true;
 }
 
 bool remove_firewall_block(){
@@ -163,4 +175,11 @@ bool is_firewall_block_active(){
     std::string cmd = string("/sbin/pfctl -t ") + kTableName + " -T show >/dev/null 2>&1";
     int rc = std::system(cmd.c_str());
     return rc == 0;
+}
+
+void drop_web_states(){
+    // Drop existing HTTP/HTTPS connections so new requests hit the block rules.
+    std::system("/sbin/pfctl -k 0.0.0.0/0 -p tcp -p 80 >/dev/null 2>&1");
+    std::system("/sbin/pfctl -k 0.0.0.0/0 -p tcp -p 443 >/dev/null 2>&1");
+    std::system("/sbin/pfctl -k 0.0.0.0/0 -p udp -p 443 >/dev/null 2>&1");
 }

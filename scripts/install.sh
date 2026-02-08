@@ -47,6 +47,7 @@ if [[ -z "${ROOT_PLIST}" ]]; then
   echo "[bliss] install: missing com.bliss.root.plist"
 else
   sudo cp "${ROOT_PLIST}" /Library/LaunchDaemons/com.bliss.root.plist
+  sudo cp "${ROOT_PLIST}" /usr/local/share/bliss/com.bliss.root.plist
 fi
 sudo /bin/launchctl bootout system/com.bliss.root 2>/dev/null || true
 retry=0

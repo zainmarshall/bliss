@@ -27,12 +27,15 @@ static const char* kLaunchdLabel = "com.bliss.timer";
 static const char* kLaunchdPlistPath = "/Library/LaunchDaemons/com.bliss.timer.plist";
 static const char* kEndTimePath = "/var/db/bliss_end_time";
 static const char* kMenubarLabel = "com.bliss.menubar";
+static const char* kRootHelperPlistPath = "/Library/LaunchDaemons/com.bliss.root.plist";
+static const char* kRootHelperPlistBackupPath = "/usr/local/share/bliss/com.bliss.root.plist";
 
 static void print_usage(){
     std::cout
         << "bliss start <minutes>           Start a focus lock for N minutes\n"
         << "bliss panic                     Early exit (typing challenge)\n"
         << "bliss status                    Show remaining time + firewall state\n"
+        << "bliss repair                    Repair root helper + clear state (requires sudo)\n"
         << "bliss uninstall                 Remove Bliss (requires puzzle)\n"
         << "bliss config website add <url>  Add a blocked website\n"
         << "bliss config website remove <url> Remove a blocked website\n"
@@ -40,6 +43,9 @@ static void print_usage(){
         << "bliss config app add            Add an app to block (picker)\n"
         << "bliss config app remove         Remove a blocked app (picker)\n"
         << "bliss config app list           List blocked apps\n"
+        << "bliss config browser add <name> Add a browser to kill on start\n"
+        << "bliss config browser remove <name> Remove a browser from kill list\n"
+        << "bliss config browser list       List extra browsers to kill\n"
         << "bliss config quotes <short|medium|long|huge>  Quote length for panic\n"
         << "bliss --help                    Show this help\n";
 }
@@ -184,7 +190,93 @@ static bool file_exists(const char* path){
     return stat(path, &st) == 0;
 }
 
+static bool send_to_root_helper(const std::string& line);
+
+static bool repair_root_helper(){
+    std::error_code ec;
+    if(std::filesystem::exists(kRootHelperPlistBackupPath, ec)){
+        std::filesystem::copy_file(
+            kRootHelperPlistBackupPath,
+            kRootHelperPlistPath,
+            std::filesystem::copy_options::overwrite_existing,
+            ec
+        );
+        if(ec){
+            std::cout << "[error] unable to copy root helper plist\n";
+            return false;
+        }
+    }else if(!std::filesystem::exists(kRootHelperPlistPath, ec)){
+        std::cout << "[error] root helper plist missing; reinstall bliss\n";
+        return false;
+    }
+    std::system("/bin/launchctl bootout system/com.bliss.root >/dev/null 2>&1");
+    std::string bootstrap = std::string("/bin/launchctl bootstrap system ") + kRootHelperPlistPath + " >/dev/null 2>&1";
+    int rc = std::system(bootstrap.c_str());
+    if(rc != 0){
+        std::cout << "[error] launchctl bootstrap failed; try reinstall\n";
+        return false;
+    }
+    std::system("/bin/launchctl kickstart -k system/com.bliss.root >/dev/null 2>&1");
+    return true;
+}
+
+static std::string dirname_from_path(const std::string& path){
+    size_t slash = path.find_last_of('/');
+    if(slash == std::string::npos){
+        return "";
+    }
+    if(slash == 0){
+        return "/";
+    }
+    return path.substr(0, slash);
+}
+
+static bool path_needs_chown(const std::string& path, uid_t uid, gid_t gid){
+    struct stat st{};
+    if(stat(path.c_str(), &st) != 0){
+        return false;
+    }
+    return st.st_uid != uid || st.st_gid != gid;
+}
+
+static bool ensure_config_ownership(){
+    uid_t uid = getuid();
+    gid_t gid = getgid();
+    std::string config_path = get_config_path();
+    std::string config_dir = dirname_from_path(config_path);
+    if(config_dir.empty()){
+        return true;
+    }
+    bool needs_fix =
+        path_needs_chown(config_dir, uid, gid) ||
+        path_needs_chown(config_path, uid, gid) ||
+        path_needs_chown(get_app_config_path(), uid, gid) ||
+        path_needs_chown(get_quotes_config_path(), uid, gid) ||
+        path_needs_chown(get_browser_config_path(), uid, gid);
+    if(!needs_fix){
+        return true;
+    }
+    std::ostringstream cmd;
+    cmd << "fix-config " << uid << " " << gid << " " << config_dir;
+    return send_to_root_helper(cmd.str());
+}
+
 static bool send_to_root_helper(const std::string& line){
+    static bool attempted_restart = false;
+    auto try_start_helper = [&]() {
+        if(attempted_restart){
+            return false;
+        }
+        if(geteuid() != 0){
+            return false;
+        }
+        attempted_restart = true;
+        std::system("/bin/launchctl bootout system/com.bliss.root >/dev/null 2>&1");
+        std::system("/bin/launchctl bootstrap system /Library/LaunchDaemons/com.bliss.root.plist >/dev/null 2>&1");
+        std::system("/bin/launchctl kickstart -k system/com.bliss.root >/dev/null 2>&1");
+        return true;
+    };
+
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if(fd < 0){
         std::cout << "unable to open root helper socket\n";
@@ -195,7 +287,10 @@ static bool send_to_root_helper(const std::string& line){
     std::snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", "/var/run/bliss.sock");
     if(connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0){
         close(fd);
-        std::cout << "unable to reach bliss root helper (try: sudo bliss ...)\n";
+        if(try_start_helper()){
+            return send_to_root_helper(line);
+        }
+        std::cout << "unable to reach bliss root helper. try: sudo /bin/launchctl kickstart -k system/com.bliss.root\n";
         return false;
     }
     std::string msg = line + "\n";
@@ -221,6 +316,31 @@ static bool send_to_root_helper(const std::string& line){
 static bool command_exists(const std::string& cmd){
     std::string test = "command -v " + cmd + " >/dev/null 2>&1";
     return std::system(test.c_str()) == 0;
+}
+
+static std::string normalize_domain(const std::string& input){
+    std::string s = input;
+    // trim spaces
+    while(!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))){ s.erase(s.begin()); }
+    while(!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))){ s.pop_back(); }
+    // strip scheme
+    const std::string http = "http://";
+    const std::string https = "https://";
+    if(s.rfind(http, 0) == 0) s = s.substr(http.size());
+    if(s.rfind(https, 0) == 0) s = s.substr(https.size());
+    // strip path
+    size_t slash = s.find('/');
+    if(slash != std::string::npos) s = s.substr(0, slash);
+    // strip port
+    size_t colon = s.find(':');
+    if(colon != std::string::npos) s = s.substr(0, colon);
+    // lowercase
+    for(char& c : s){
+        if(c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    }
+    // trim trailing dot
+    while(!s.empty() && s.back() == '.') s.pop_back();
+    return s;
 }
 
 static std::string pick_app_path_fzf(){
@@ -803,7 +923,8 @@ int main(int argc, char* argv[]){
                 remove_hosts_block();
                 remove_end_time();
             }else{
-                unload_launchd_job();
+                std::cout << "[error] session already running; wait or use panic\n";
+                return 1;
             }
         }
         if(argc < 3){
@@ -825,12 +946,17 @@ int main(int argc, char* argv[]){
             std::vector<std::string> domains;
             load_block_list(domains);
             std::cout << "blocking " << domains.size() << " domains\n";
+            std::cout << "note: browsers will be closed; save work first\n";
             return 0;
         }
-        if(!apply_hosts_block()){
+        // Ensure DNS resolution isn't poisoned by existing hosts block.
+        remove_hosts_block();
+        if(!apply_firewall_block()){
             return 1;
         }
-        if(!apply_firewall_block()){
+        kill_browser_apps();
+        drop_web_states();
+        if(!apply_hosts_block()){
             return 1;
         }
         if(!write_end_time(minutes)){
@@ -855,6 +981,7 @@ int main(int argc, char* argv[]){
         load_block_list(domains);
         std::cout << "lockdown started for " << minutes << " minutes\n";
         std::cout << "blocking " << domains.size() << " domains\n";
+        std::cout << "note: browsers will be closed; save work first\n";
         return 0;
     }
 
@@ -892,6 +1019,35 @@ int main(int argc, char* argv[]){
         print_status();
         return 0;
     }
+    if(command == "repair"){
+        bool is_root = geteuid() == 0;
+        if(!is_root){
+            std::cout << "repair requires sudo: sudo bliss repair\n";
+            return 1;
+        }
+        if(!repair_root_helper()){
+            return 1;
+        }
+        std::cout << "repaired root helper\n";
+        return 0;
+    }
+    if(command == "flush"){
+        bool is_root = geteuid() == 0;
+        if(!is_root){
+            if(!send_to_root_helper("flush")){
+                return 1;
+            }
+            std::cout << "flushed\n";
+            return 0;
+        }
+        unload_launchd_job();
+        remove_end_time();
+        remove_hosts_block();
+        remove_firewall_block();
+        drop_web_states();
+        std::cout << "flushed\n";
+        return 0;
+    }
     if(command == "uninstall"){
         bool is_root = geteuid() == 0;
         if(!is_root){
@@ -917,6 +1073,7 @@ int main(int argc, char* argv[]){
             print_usage();
             return 1;
         }
+        bool is_root = geteuid() == 0;
         long long end_time = 0;
         if(read_end_time(end_time)){
             auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
@@ -933,23 +1090,9 @@ int main(int argc, char* argv[]){
             }
             string action = argv[3];
             if(action == "add"){
-                std::string app_path;
-                if(argc >= 5){
-                    app_path = argv[4];
-                }else{
-                    app_path = pick_app_path_fzf();
-                    if(app_path.empty()){
-                        app_path = pick_app_path_manual();
-                    }
-                }
-                if(app_path.empty()){
-                    std::cout << "[error] no app selected (install fzf or pass a .app path)\n";
+                if(!is_root && !ensure_config_ownership()){
                     return 1;
                 }
-                std::string bundle = get_bundle_id_for_path(app_path);
-                std::string name = std::filesystem::path(app_path).stem().string();
-                std::string line = name + "|";
-                if(!bundle.empty()){
                     line += "bundle=" + bundle + "|";
                 }
                 line += "path=" + app_path;
@@ -959,9 +1102,17 @@ int main(int argc, char* argv[]){
                     std::cout << "bundle: " << bundle << "\n";
                 }
                 std::cout << "added app\n";
-                return 0;
+                unload_launchd_job();
+                remove_end_time();
+                remove_hosts_block();
+                remove_firewall_block();
+                drop_web_states();
+                std::cout << "repaired and flushed\n";
             }
             if(action == "remove"){
+                if(!is_root && !ensure_config_ownership()){
+                    return 1;
+                }
                 std::vector<std::string> apps;
                 if(!load_app_list(apps)){
                     return 1;
@@ -1009,22 +1160,42 @@ int main(int argc, char* argv[]){
             }
             string action = argv[3];
             if(action == "add"){
+                if(!is_root && !ensure_config_ownership()){
+                    return 1;
+                }
                 if(argc < 5){
                     std::cout << "[error] config website add requires <domain>\n";
                     return 1;
                 }
-                if(!add_block_domain(argv[4])){
+                std::string domain = normalize_domain(argv[4]);
+                if(domain.empty()){
+                    std::cout << "[error] invalid domain\n";
                     return 1;
+                }
+                if(!add_block_domain(domain)){
+                    return 1;
+                }
+                // auto-add www for bare domains
+                if(domain.find('.') != std::string::npos && domain.find('.') == domain.rfind('.')){
+                    add_block_domain("www." + domain);
                 }
                 std::cout << "added domain\n";
                 return 0;
             }
             if(action == "remove"){
+                if(!is_root && !ensure_config_ownership()){
+                    return 1;
+                }
                 if(argc < 5){
                     std::cout << "[error] config website remove requires <domain>\n";
                     return 1;
                 }
-                if(!remove_block_domain(argv[4])){
+                std::string domain = normalize_domain(argv[4]);
+                if(domain.empty()){
+                    std::cout << "[error] invalid domain\n";
+                    return 1;
+                }
+                if(!remove_block_domain(domain)){
                     return 1;
                 }
                 std::cout << "removed domain\n";
@@ -1047,6 +1218,95 @@ int main(int argc, char* argv[]){
             print_usage();
             return 1;
         }
+        if(sub == "browser"){
+            if(argc < 4){
+                print_usage();
+                return 1;
+            }
+            string action = argv[3];
+            if(action == "add"){
+                if(!is_root && !ensure_config_ownership()){
+                    return 1;
+                }
+                std::string name;
+                if(argc >= 5){
+                    std::string input = argv[4];
+                    if(input.find('/') != std::string::npos || input.size() > 4 && input.rfind(".app") == input.size() - 4){
+                        std::filesystem::path p(input);
+                        if(p.extension() == ".app"){
+                            name = p.stem().string();
+                        }
+                    }
+                    if(name.empty()){
+                        name = input;
+                    }
+                }else{
+                    std::string app_path = pick_app_path_fzf();
+                    if(app_path.empty()){
+                        app_path = pick_app_path_manual();
+                    }
+                    if(app_path.empty()){
+                        std::cout << "[error] no app selected (install fzf or pass a .app path)\n";
+                        return 1;
+                    }
+                    name = std::filesystem::path(app_path).stem().string();
+                    std::cout << "selected: " << app_path << "\n";
+                }
+                if(!add_browser_name(name)){
+                    return 1;
+                }
+                std::cout << "added browser: " << name << "\n";
+                return 0;
+            }
+            if(action == "remove"){
+                if(!is_root && !ensure_config_ownership()){
+                    return 1;
+                }
+                std::string name;
+                if(argc >= 5){
+                    name = argv[4];
+                }else{
+                    std::vector<std::string> names;
+                    if(!load_browser_list(names)){
+                        return 1;
+                    }
+                    if(names.empty()){
+                        std::cout << "no entries\n";
+                        return 0;
+                    }
+                    std::string picked = pick_app_entry_fzf(names);
+                    if(picked.empty()){
+                        picked = pick_app_entry_manual(names);
+                    }
+                    if(picked.empty()){
+                        std::cout << "[error] no browser selected\n";
+                        return 1;
+                    }
+                    name = picked;
+                }
+                if(!remove_browser_name(name)){
+                    return 1;
+                }
+                std::cout << "removed browser: " << name << "\n";
+                return 0;
+            }
+            if(action == "list"){
+                std::vector<std::string> names;
+                if(!load_browser_list(names)){
+                    return 1;
+                }
+                if(names.empty()){
+                    std::cout << "no entries\n";
+                    return 0;
+                }
+                for(const auto& n : names){
+                    std::cout << n << "\n";
+                }
+                return 0;
+            }
+            print_usage();
+            return 1;
+        }
         if(sub == "quotes"){
             if(argc < 4){
                 std::cout << "[error] options: short, medium, long, huge\n";
@@ -1055,6 +1315,9 @@ int main(int argc, char* argv[]){
             std::string q = argv[3];
             if(q != "short" && q != "medium" && q != "long" && q != "huge"){
                 std::cout << "[error] options: short, medium, long, huge\n";
+                return 1;
+            }
+            if(!is_root && !ensure_config_ownership()){
                 return 1;
             }
             if(!write_quotes_length(q)){

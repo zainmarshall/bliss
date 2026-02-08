@@ -110,6 +110,16 @@ std::string get_quotes_config_path(){
     return get_config_dir() + "/quotes.txt";
 }
 
+std::string get_browser_config_path(){
+    if(!g_config_path_override.empty()){
+        std::string dir = get_config_dir_from_override();
+        if(!dir.empty()){
+            return dir + "/browsers.txt";
+        }
+    }
+    return get_config_dir() + "/browsers.txt";
+}
+
 static bool ensure_config_dir(){
     std::error_code ec;
     std::filesystem::create_directories(get_config_dir(), ec);
@@ -148,6 +158,80 @@ bool read_quotes_length(std::string& value){
     }
     value = line;
     return true;
+}
+
+static bool write_browser_list(const std::vector<std::string>& names){
+    if(!ensure_config_dir()){
+        std::cout << "[error] unable to create config directory (check permissions)\n";
+        return false;
+    }
+    std::ofstream out(get_browser_config_path(), std::ios::trunc);
+    if(!out.is_open()){
+        std::cout << "[error] unable to write browser config file (check permissions)\n";
+        std::cout << "if this was created by sudo, run: sudo chown -R $USER ~/.config/bliss\n";
+        return false;
+    }
+    for(const auto& n : names){
+        out << n << "\n";
+    }
+    return true;
+}
+
+bool load_browser_list(std::vector<std::string>& out_names){
+    out_names.clear();
+    std::ifstream in(get_browser_config_path());
+    if(!in.is_open()){
+        return write_browser_list(out_names);
+    }
+    std::set<std::string> uniq;
+    std::string line;
+    while(std::getline(in, line)){
+        std::string t = trim(line);
+        if(t.empty() || t[0] == '#') continue;
+        uniq.insert(t);
+    }
+    for(const auto& n : uniq){
+        out_names.push_back(n);
+    }
+    return true;
+}
+
+bool add_browser_name(const std::string& name){
+    std::string cleaned = trim(name);
+    if(cleaned.empty()){
+        std::cout << "[error] invalid browser name\n";
+        return false;
+    }
+    std::vector<std::string> names;
+    if(!load_browser_list(names)){
+        return false;
+    }
+    for(const auto& n : names){
+        if(n == cleaned){
+            return true;
+        }
+    }
+    names.push_back(cleaned);
+    return write_browser_list(names);
+}
+
+bool remove_browser_name(const std::string& name){
+    std::string cleaned = trim(name);
+    if(cleaned.empty()){
+        std::cout << "[error] invalid browser name\n";
+        return false;
+    }
+    std::vector<std::string> names;
+    if(!load_browser_list(names)){
+        return false;
+    }
+    std::vector<std::string> filtered;
+    for(const auto& n : names){
+        if(n != cleaned){
+            filtered.push_back(n);
+        }
+    }
+    return write_browser_list(filtered);
 }
 
 static bool write_block_list(const std::vector<std::string>& domains){
@@ -202,12 +286,15 @@ bool add_block_domain(const std::string& domain){
     if(!load_block_list(domains)){
         return false;
     }
-    for(const auto& d : domains){
-        if(d == cleaned){
-            return true;
+    auto add_unique = [&](const std::string& value){
+        for(const auto& d : domains){
+            if(d == value){
+                return;
+            }
         }
-    }
-    domains.push_back(cleaned);
+        domains.push_back(value);
+    };
+    add_unique(cleaned);
     return write_block_list(domains);
 }
 
@@ -217,13 +304,24 @@ bool remove_block_domain(const std::string& domain){
         std::cout << "[error] invalid domain\n";
         return false;
     }
+    std::set<std::string> remove_set;
+    remove_set.insert(cleaned);
+    if(cleaned.rfind("www.", 0) == 0){
+        std::string base = cleaned.substr(4);
+        if(!base.empty()){
+            remove_set.insert(base);
+        }
+    }
+    if(cleaned.find('.') != std::string::npos && cleaned.find('.') == cleaned.rfind('.')){
+        remove_set.insert("www." + cleaned);
+    }
     std::vector<std::string> domains;
     if(!load_block_list(domains)){
         return false;
     }
     std::vector<std::string> filtered;
     for(const auto& d : domains){
-        if(d != cleaned){
+        if(remove_set.count(d) == 0){
             filtered.push_back(d);
         }
     }
@@ -325,6 +423,35 @@ bool remove_block_app_entries(const std::vector<std::string>& entries){
 static void flush_dns(){
     std::system("/usr/bin/dscacheutil -flushcache");
     std::system("/usr/bin/killall -HUP mDNSResponder");
+}
+
+void kill_browser_apps(){
+    const char* defaults[] = {
+        "Safari",
+        "Google Chrome",
+        "Google Chrome Helper",
+        "Brave Browser",
+        "Brave Browser Helper",
+        "Firefox",
+        "Firefox Developer Edition",
+        "Arc",
+        "Microsoft Edge",
+        "Opera"
+    };
+    std::set<std::string> names;
+    for(const auto* name : defaults){
+        names.insert(name);
+    }
+    std::vector<std::string> extra;
+    if(load_browser_list(extra)){
+        for(const auto& name : extra){
+            names.insert(name);
+        }
+    }
+    for(const auto& name : names){
+        std::string cmd = std::string("/usr/bin/pkill -x \"") + name + "\" >/dev/null 2>&1";
+        std::system(cmd.c_str());
+    }
 }
 
 bool apply_hosts_block(){
