@@ -64,5 +64,13 @@ Notes
 - **Root helper:** `blissroot` runs as a LaunchDaemon so users don’t need sudo after install.
 - **Config:** `~/.config/bliss/blocks.txt` stores blocked domains.
 
+## GUI (macOS)
+- Native SwiftUI GUI source: `/Users/zain/Developer/bliss/gui/main.swift`
+- Run it locally:
+```bash
+bash /Users/zain/Developer/bliss/scripts/run_gui.sh
+```
+- GUI panic uses an in-app typing challenge and then calls `bliss panic --skip-challenge`.
+
 ## Devlogs
 Read the devlogs at: https://flavortown.hackclub.com/projects/11291 

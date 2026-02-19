@@ -46,7 +46,7 @@ static void print_usage(){
         << "bliss config browser add <name> Add a browser to kill on start\n"
         << "bliss config browser remove <name> Remove a browser from kill list\n"
         << "bliss config browser list       List extra browsers to kill\n"
-        << "bliss config quotes <short|medium|long|huge>  Quote length for panic\n"
+        << "bliss config quotes <short|medium|long|huge|get>  Quote length for panic\n"
         << "bliss --help                    Show this help\n";
 }
 
@@ -990,13 +990,16 @@ int main(int argc, char* argv[]){
             std::cout << "no active session; nothing to panic\n";
             return 0;
         }
-        double accuracy = 0.0;
-        if(!typing_test(accuracy)){
-            std::cout << "puzzle failed (still blocked)\n";
+        bool skip_challenge = (argc >= 3 && std::string(argv[2]) == "--skip-challenge");
+        if(!skip_challenge){
+            double accuracy = 0.0;
+            if(!typing_test(accuracy)){
+                std::cout << "puzzle failed (still blocked)\n";
+                std::cout << "target: 95%, actual: " << static_cast<int>(accuracy + 0.5) << "%\n";
+                return 1;
+            }
             std::cout << "target: 95%, actual: " << static_cast<int>(accuracy + 0.5) << "%\n";
-            return 1;
         }
-        std::cout << "target: 95%, actual: " << static_cast<int>(accuracy + 0.5) << "%\n";
         if(!is_root){
             if(!send_to_root_helper("panic")){
                 return 1;
@@ -1115,6 +1118,22 @@ int main(int argc, char* argv[]){
                 if(!load_app_list(apps)){
                     return 1;
                 }
+                if(argc >= 5){
+                    std::string target = argv[4];
+                    auto entries = parse_app_entries(apps);
+                    for(size_t i = 0; i < entries.size(); ++i){
+                        const auto& e = entries[i];
+                        if(e.raw == target || e.name == target || e.path == target || e.bundle == target){
+                            if(!remove_block_app(e.raw)){
+                                return 1;
+                            }
+                            std::cout << "removed app\n";
+                            return 0;
+                        }
+                    }
+                    std::cout << "[error] app not found\n";
+                    return 1;
+                }
                 auto entries = parse_app_entries(apps);
                 auto display_plain = app_entry_display_plain(entries);
                 auto display_color = app_entry_display(entries);
@@ -1137,8 +1156,19 @@ int main(int argc, char* argv[]){
                 if(!load_app_list(apps)){
                     return 1;
                 }
+                bool raw = (argc >= 5 && std::string(argv[4]) == "--raw");
+                if(raw){
+                    if(apps.empty()){
+                        std::cout << "no entries\n";
+                        return 0;
+                    }
+                    for(const auto& line : apps){
+                        std::cout << line << "\n";
+                    }
+                    return 0;
+                }
                 auto entries = parse_app_entries(apps);
-                auto display = app_entry_display(entries);
+                auto display = isatty(STDOUT_FILENO) ? app_entry_display(entries) : app_entry_display_plain(entries);
                 if(display.empty()){
                     std::cout << "no entries\n";
                     return 0;
@@ -1308,12 +1338,21 @@ int main(int argc, char* argv[]){
         }
         if(sub == "quotes"){
             if(argc < 4){
-                std::cout << "[error] options: short, medium, long, huge\n";
+                std::cout << "[error] options: short, medium, long, huge, get\n";
                 return 1;
             }
             std::string q = argv[3];
+            if(q == "get"){
+                std::string current = "medium";
+                read_quotes_length(current);
+                if(current != "short" && current != "medium" && current != "long" && current != "huge"){
+                    current = "medium";
+                }
+                std::cout << "quotes: " << current << "\n";
+                return 0;
+            }
             if(q != "short" && q != "medium" && q != "long" && q != "huge"){
-                std::cout << "[error] options: short, medium, long, huge\n";
+                std::cout << "[error] options: short, medium, long, huge, get\n";
                 return 1;
             }
             if(!is_root && !ensure_config_ownership()){
