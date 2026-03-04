@@ -20,10 +20,32 @@ final class BlissStatusBar {
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
+        let openItem = NSMenuItem(title: "Open Dashboard", action: #selector(openDashboard), keyEquivalent: "o")
+        openItem.target = self
+        menu.addItem(openItem)
+        menu.addItem(.separator())
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
         return menu
+    }
+
+    @objc private func openDashboard() {
+        let ws = NSWorkspace.shared
+        let candidateApps = [
+            "/Users/zain/Developer/bliss/gui/build/BlissGUI.app",
+            "/Applications/BlissGUI.app",
+            "/Applications/Bliss.app"
+        ]
+        for path in candidateApps {
+            if FileManager.default.fileExists(atPath: path) {
+                ws.open(URL(fileURLWithPath: path))
+                return
+            }
+        }
+        if let appURL = ws.urlForApplication(withBundleIdentifier: "com.bliss.gui") {
+            ws.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
+        }
     }
 
     @objc private func quit() {

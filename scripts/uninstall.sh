@@ -20,6 +20,7 @@ fi
 
 rm -f "${USER_HOME}/Library/LaunchAgents/com.bliss.menubar.plist"
 rm -rf "${USER_HOME}/Library/Application Support/Bliss"
+sudo rm -rf /Applications/BlissGUI.app
 sudo rm -rf /usr/local/share/bliss
 
 rm -rf "${USER_HOME}/.config/bliss"

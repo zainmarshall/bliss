@@ -19,14 +19,14 @@ if [[ ! -f "${PLIST_SRC}" ]]; then
   exit 0
 fi
 
-if [[ -f "${PREBUILT_BIN}" ]]; then
-  echo "[bliss] menubar: using prebuilt binary"
-  mkdir -p "${BUILD_DIR}"
-  cp "${PREBUILT_BIN}" "${BIN}"
-else
+if [[ -f "${SRC}" ]]; then
   echo "[bliss] menubar: building from source"
   mkdir -p "${BUILD_DIR}"
   /usr/bin/swiftc -framework Cocoa "${SRC}" -o "${BIN}"
+elif [[ -f "${PREBUILT_BIN}" ]]; then
+  echo "[bliss] menubar: using prebuilt binary"
+  mkdir -p "${BUILD_DIR}"
+  cp "${PREBUILT_BIN}" "${BIN}"
 fi
 
 INSTALL_DIR="${HOME}/Library/Application Support/Bliss"

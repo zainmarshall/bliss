@@ -1,31 +1,122 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+private enum DashboardTab: Hashable {
+    case main
+    case config
+}
+
+private enum ImportTarget {
+    case app
+    case browser
+}
+
 struct ContentView: View {
     @StateObject private var vm = BlissViewModel()
     @State private var panicQuote = "Focus is a practice, not a mood."
-    @State private var showingAppImporter = false
-    @State private var showingBrowserImporter = false
+    @State private var importTarget: ImportTarget?
+    @State private var selectedTab: DashboardTab = .main
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                Section("Status") {
-                    Text(vm.statusText)
-                    Text(vm.remainingText)
-                    Text(vm.pfText)
+        TabView(selection: $selectedTab) {
+            mainTab
+                .tabItem { Label("Main", systemImage: "timer") }
+                .tag(DashboardTab.main)
+            configTab
+                .tabItem { Label("Config", systemImage: "slider.horizontal.3") }
+                .tag(DashboardTab.config)
+        }
+        .frame(minWidth: 900, minHeight: 620)
+        .onAppear {
+            vm.refreshAll()
+            vm.startAutoRefresh()
+        }
+        .onDisappear {
+            vm.stopAutoRefresh()
+        }
+        .sheet(isPresented: $vm.panicPresented) {
+            PanicChallengeView(quote: panicQuote, mode: vm.panicMode) {
+                await vm.panicFromGUI()
+            }
+        }
+        .fileImporter(
+            isPresented: Binding(
+                get: { importTarget != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        importTarget = nil
+                    }
                 }
+            ),
+            allowedContentTypes: [.applicationBundle],
+            allowsMultipleSelection: false
+        ) { result in
+            let target = importTarget
+            importTarget = nil
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                switch target {
+                case .app:
+                    vm.addApp(path: url.path)
+                case .browser:
+                    vm.addBrowserFromAppPath(url.path)
+                case .none:
+                    break
+                }
+            case .failure(let error):
+                if target == .browser {
+                    vm.setManualError("Unable to read selected browser app: \(error.localizedDescription)")
+                } else {
+                    vm.setManualError("Unable to read selected app: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
 
-                Section("Start") {
-                    TextField("Minutes", text: $vm.minutesInput)
-                    Button("Start Session") { vm.startSession() }
+    private var mainTab: some View {
+        VStack {
+            Spacer()
+            VStack(alignment: .center, spacing: 14) {
+                Text("Bliss")
+                    .font(.title.weight(.semibold))
+                Text(vm.statusText.replacingOccurrences(of: "status: ", with: "").capitalized)
+                    .foregroundColor(vm.isSessionActive ? .green : .secondary)
+                Text(vm.remainingText.replacingOccurrences(of: "remaining: ", with: ""))
+                    .font(.system(size: 56, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+
+                HStack(spacing: 10) {
+                    TextField("25", text: $vm.minutesInput)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 110)
+                    Button("Start") { vm.startSession() }
+                        .keyboardShortcut(.defaultAction)
                     Button("Panic") {
                         panicQuote = vm.randomQuote()
                         vm.panicPresented = true
                     }
                 }
+            }
+            .frame(maxWidth: .infinity)
+            Spacer()
+        }
+        .padding(20)
+    }
 
-                Section("Quotes") {
+    private var configTab: some View {
+        ZStack {
+            VStack(alignment: .leading, spacing: 12) {
+                if let error = vm.errorMessage {
+                    Text(error)
+                        .font(.callout)
+                        .foregroundColor(.red)
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                }
+                HStack {
+                    Text("Quote Length")
                     Picker(
                         "Length",
                         selection: Binding(
@@ -38,31 +129,28 @@ struct ContentView: View {
                         Text("Long").tag("long")
                         Text("Huge").tag("huge")
                     }
-                    .disabled(vm.isSessionActive)
-                }
-            }
-            .navigationTitle("Bliss")
-        } detail: {
-            VStack(alignment: .leading, spacing: 12) {
-                if let error = vm.errorMessage {
-                    Text(error)
-                        .font(.callout)
-                        .foregroundColor(.red)
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-                }
-                if vm.isSessionActive {
-                    Text("Config is locked while a session is active.")
-                        .font(.callout)
-                        .foregroundColor(.orange)
+                    .frame(width: 180)
+
+                    Divider().frame(height: 20)
+
+                    Text("Panic Mode")
+                    Picker(
+                        "Panic Mode",
+                        selection: Binding(
+                            get: { vm.panicMode },
+                            set: { vm.setPanicMode($0) }
+                        )
+                    ) {
+                        Text("Typing").tag(PanicModeSetting.typing)
+                        Text("Codeforces").tag(PanicModeSetting.codeforces)
+                    }
+                    .frame(width: 180)
                 }
 
                 HStack {
                     TextField("Add website", text: $vm.websiteInput)
                     Button("Add") { vm.addWebsite() }
                 }
-                .disabled(vm.isSessionActive)
 
                 List {
                     Section("Blocked Websites") {
@@ -80,8 +168,7 @@ struct ContentView: View {
                     }
 
                     Section("Blocked Apps") {
-                        Button("Add") { showingAppImporter = true }
-                            .disabled(vm.isSessionActive)
+                        Button("Add") { importTarget = .app }
                         if vm.apps.isEmpty {
                             Text("No entries")
                         } else {
@@ -103,16 +190,13 @@ struct ContentView: View {
                                     }
                                     Spacer()
                                     Button("Remove") { vm.removeApp(app) }
-                                        .disabled(vm.isSessionActive)
                                 }
                             }
                         }
                     }
 
                     Section("Browsers") {
-                        Button("Add") { showingBrowserImporter = true }
-                            .disabled(vm.isSessionActive)
-
+                        Button("Add") { importTarget = .browser }
                         if vm.browsers.isEmpty {
                             Text("No entries")
                         } else {
@@ -121,63 +205,23 @@ struct ContentView: View {
                                     Text(browser)
                                     Spacer()
                                     Button("Remove") { vm.removeBrowser(browser) }
-                                        .disabled(vm.isSessionActive)
                                 }
                             }
                         }
                     }
                 }
+            }
+            .disabled(vm.isSessionActive)
+            .opacity(vm.isSessionActive ? 0.4 : 1.0)
 
-                Text(vm.output)
-                    .font(.footnote.monospaced())
-                    .foregroundColor(.secondary)
-                    .lineLimit(4)
-
-                HStack {
-                    Spacer()
-                    Button("Refresh") { vm.refreshAll() }
-                }
-            }
-            .padding()
-            .navigationTitle("Dashboard")
-        }
-        .onAppear {
-            vm.refreshAll()
-            vm.startAutoRefresh()
-        }
-        .onDisappear {
-            vm.stopAutoRefresh()
-        }
-        .sheet(isPresented: $vm.panicPresented) {
-            PanicChallengeView(quote: panicQuote) {
-                await vm.panicFromGUI()
+            if vm.isSessionActive {
+                Text("Config is locked while a session is active.")
+                    .font(.headline)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
         }
-        .fileImporter(
-            isPresented: $showingAppImporter,
-            allowedContentTypes: [.applicationBundle],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                guard let url = urls.first else { return }
-                vm.addApp(path: url.path)
-            case .failure(let error):
-                vm.setManualError("Unable to read selected app: \(error.localizedDescription)")
-            }
-        }
-        .fileImporter(
-            isPresented: $showingBrowserImporter,
-            allowedContentTypes: [.applicationBundle],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                guard let url = urls.first else { return }
-                vm.addBrowserFromAppPath(url.path)
-            case .failure(let error):
-                vm.setManualError("Unable to read selected browser app: \(error.localizedDescription)")
-            }
-        }
+        .padding(20)
     }
 }

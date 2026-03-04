@@ -1,5 +1,10 @@
 import Foundation
 
+enum PanicModeSetting: String, CaseIterable {
+    case typing = "typing"
+    case codeforces = "codeforces"
+}
+
 struct AppEntryModel: Identifiable, Hashable {
     let raw: String
     let name: String
@@ -20,6 +25,7 @@ final class BlissViewModel: ObservableObject {
     @Published var browsers: [String] = []
     @Published var websiteInput = ""
     @Published var quoteLength = "medium"
+    @Published var panicMode: PanicModeSetting = .typing
     @Published var output = ""
     @Published var errorMessage: String?
     @Published var panicPresented = false
@@ -49,8 +55,12 @@ final class BlissViewModel: ObservableObject {
 
     func refreshAll() {
         syncQuoteLengthFromConfig()
+        syncPanicModeFromConfig()
         Task {
             await refreshStatusAsync()
+            if isSessionActive {
+                return
+            }
             await refreshWebsitesAsync()
             await refreshAppsAsync()
             await refreshBrowsersAsync()
@@ -66,10 +76,7 @@ final class BlissViewModel: ObservableObject {
     }
 
     func addWebsite() {
-        guard !isSessionActive else {
-            errorMessage = lockMessage()
-            return
-        }
+        guard !isSessionActive else { return }
         let domain = websiteInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !domain.isEmpty else { return }
         runAction(["config", "website", "add", domain], successRefresh: false) { [weak self] in
@@ -80,40 +87,28 @@ final class BlissViewModel: ObservableObject {
     }
 
     func removeWebsite(_ domain: String) {
-        guard !isSessionActive else {
-            errorMessage = lockMessage()
-            return
-        }
+        guard !isSessionActive else { return }
         runAction(["config", "website", "remove", domain], successRefresh: false) { [weak self] in
             self?.refreshWebsites()
         }
     }
 
     func addApp(path: String) {
-        guard !isSessionActive else {
-            errorMessage = lockMessage()
-            return
-        }
+        guard !isSessionActive else { return }
         runAction(["config", "app", "add", path], successRefresh: false) { [weak self] in
             self?.refreshApps()
         }
     }
 
     func removeApp(_ app: AppEntryModel) {
-        guard !isSessionActive else {
-            errorMessage = lockMessage()
-            return
-        }
+        guard !isSessionActive else { return }
         runAction(["config", "app", "remove", app.raw], successRefresh: false) { [weak self] in
             self?.refreshApps()
         }
     }
 
     func addBrowserFromAppPath(_ path: String) {
-        guard !isSessionActive else {
-            errorMessage = lockMessage()
-            return
-        }
+        guard !isSessionActive else { return }
         let name = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
         if name.isEmpty {
             errorMessage = "Invalid app path for browser selection."
@@ -125,21 +120,14 @@ final class BlissViewModel: ObservableObject {
     }
 
     func removeBrowser(_ name: String) {
-        guard !isSessionActive else {
-            errorMessage = lockMessage()
-            return
-        }
+        guard !isSessionActive else { return }
         runAction(["config", "browser", "remove", name], successRefresh: false) { [weak self] in
             self?.refreshBrowsers()
         }
     }
 
     func setQuoteLength(_ value: String) {
-        guard !isSessionActive else {
-            errorMessage = lockMessage()
-            syncQuoteLengthFromConfig()
-            return
-        }
+        guard !isSessionActive else { return }
         Task {
             let result = await Task.detached { BlissCommand.run(["config", "quotes", value]) }.value
             output = result.combinedOutput
@@ -151,6 +139,12 @@ final class BlissViewModel: ObservableObject {
             errorMessage = actionableMessage(from: result.combinedOutput)
             syncQuoteLengthFromConfig()
         }
+    }
+
+    func setPanicMode(_ mode: PanicModeSetting) {
+        guard !isSessionActive else { return }
+        panicMode = mode
+        savePanicModeToConfig()
     }
 
     func panicFromGUI() async -> Bool {
@@ -209,6 +203,29 @@ final class BlissViewModel: ObservableObject {
         }
     }
 
+    private func syncPanicModeFromConfig() {
+        let url = panicModeConfigURL()
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else {
+            panicMode = .typing
+            return
+        }
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        panicMode = PanicModeSetting(rawValue: value) ?? .typing
+    }
+
+    private func savePanicModeToConfig() {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = panicModeConfigURL()
+        try? (panicMode.rawValue + "\n").data(using: .utf8)?.write(to: url)
+    }
+
+    private func panicModeConfigURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss/panic_mode.txt")
+    }
+
     private func refreshStatusAsync() async {
         let result = await Task.detached { BlissCommand.run(["status"]) }.value
         if result.code != 0 {
@@ -240,8 +257,12 @@ final class BlissViewModel: ObservableObject {
     private func refreshAppsAsync() async {
         let result = await Task.detached { BlissCommand.run(["config", "app", "list", "--raw"]) }.value
         if result.code != 0 {
-            output = result.combinedOutput
-            errorMessage = actionableMessage(from: result.combinedOutput)
+            let out = result.combinedOutput
+            if out.contains("config is locked while a session is active") {
+                return
+            }
+            output = out
+            errorMessage = actionableMessage(from: out)
             return
         }
         let lines = result.stdout
@@ -254,8 +275,12 @@ final class BlissViewModel: ObservableObject {
     private func refreshBrowsersAsync() async {
         let result = await Task.detached { BlissCommand.run(["config", "browser", "list"]) }.value
         if result.code != 0 {
-            output = result.combinedOutput
-            errorMessage = actionableMessage(from: result.combinedOutput)
+            let out = result.combinedOutput
+            if out.contains("config is locked while a session is active") {
+                return
+            }
+            output = out
+            errorMessage = actionableMessage(from: out)
             return
         }
         browsers = result.stdout

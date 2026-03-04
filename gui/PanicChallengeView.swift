@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PanicChallengeView: View {
     let quote: String
+    let mode: PanicModeSetting
     let onSuccess: () async -> Bool
 
     @Environment(\.dismiss) private var dismiss
@@ -16,6 +17,30 @@ struct PanicChallengeView: View {
             Text("Panic Challenge")
                 .font(.title2.weight(.semibold))
 
+            if mode == .typing {
+                typingView
+            } else {
+                CodeforcesPanicView(onUnlock: {
+                    let ok = await onSuccess()
+                    if ok {
+                        dismiss()
+                    }
+                    return ok
+                })
+            }
+
+            HStack {
+                Button("Cancel") { dismiss() }
+                Spacer()
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 760, idealWidth: 840, maxWidth: 900, minHeight: 520, idealHeight: 600, maxHeight: 640)
+        .onAppear { isInputFocused = true }
+    }
+
+    private var typingView: some View {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Type with at least 95% accuracy to unlock.")
                 .foregroundColor(.secondary)
 
@@ -55,7 +80,6 @@ struct PanicChallengeView: View {
                 .opacity(0.02)
 
             HStack {
-                Button("Cancel") { dismiss() }
                 Spacer()
                 if isSubmitting {
                     ProgressView()
@@ -80,9 +104,6 @@ struct PanicChallengeView: View {
                 .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(20)
-        .frame(width: 760, height: 420)
-        .onAppear { isInputFocused = true }
     }
 
     private var accuracy: Double {
