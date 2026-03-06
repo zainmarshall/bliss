@@ -72,7 +72,7 @@ bash /Users/zain/Developer/bliss/scripts/run_gui.sh
 ```
 - GUI panic uses an in-app typing challenge and then calls `bliss panic --skip-challenge`.
 - GUI panic now includes a Codeforces-style mode:
-  - local problem bank: `/Users/zain/Developer/bliss/gui/problems/codeforces.json`
+  - local problem bank: `/usr/local/share/bliss/problems/codeforces.json`
   - preset languages: C++17 (`clang++`), Python 3, Java 17
   - optional custom language presets: `~/.config/bliss/panic_languages.json`
 

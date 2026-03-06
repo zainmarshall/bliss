@@ -3,6 +3,7 @@ import SwiftUI
 struct PanicChallengeView: View {
     let quote: String
     let mode: PanicModeSetting
+    let cfDifficulty: CFPanicDifficulty
     let onSuccess: () async -> Bool
 
     @Environment(\.dismiss) private var dismiss
@@ -20,7 +21,7 @@ struct PanicChallengeView: View {
             if mode == .typing {
                 typingView
             } else {
-                CodeforcesPanicView(onUnlock: {
+                CodeforcesPanicView(difficulty: cfDifficulty, onUnlock: {
                     let ok = await onSuccess()
                     if ok {
                         dismiss()

@@ -35,9 +35,8 @@ sudo cp "${ROOT_DIR}/scripts/uninstall.sh" /usr/local/share/bliss/uninstall.sh
 sudo chmod 755 /usr/local/share/bliss/uninstall.sh
 
 echo "[bliss] install: gui"
-mkdir -p "${GUI_APP_MACOS}" "${GUI_APP_RESOURCES}/problems"
+mkdir -p "${GUI_APP_MACOS}" "${GUI_APP_RESOURCES}"
 /usr/bin/swiftc -parse-as-library -module-cache-path /tmp/bliss_module_cache -framework SwiftUI -framework AppKit "${ROOT_DIR}/gui/"*.swift -o "${GUI_APP_BIN}"
-cp "${ROOT_DIR}/gui/problems/codeforces.json" "${GUI_APP_RESOURCES}/problems/codeforces.json"
 cat > "${GUI_INFO_PLIST}" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -69,6 +68,12 @@ PLIST
 sudo rm -rf /Applications/BlissGUI.app
 sudo cp -R "${GUI_APP_BUNDLE}" /Applications/BlissGUI.app
 sudo /usr/bin/codesign --force --sign - /Applications/BlissGUI.app >/dev/null 2>&1 || true
+
+echo "[bliss] install: problems"
+sudo mkdir -p /usr/local/share/bliss/problems
+if [[ -f "${ROOT_DIR}/problems/codeforces.json" ]]; then
+  sudo cp "${ROOT_DIR}/problems/codeforces.json" /usr/local/share/bliss/problems/codeforces.json
+fi
 
 echo "[bliss] install: menubar"
 bash "${ROOT_DIR}/scripts/install_menubar.sh"

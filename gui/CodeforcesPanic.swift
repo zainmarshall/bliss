@@ -11,8 +11,10 @@ struct CFPanicProblem: Codable, Identifiable {
     let title: String
     let statement: String
     let url: String
+    let difficulty: String
+    let input: String?
+    let output: String?
     let tests: [CFPanicTestCase]
-    let starterCodeByLanguage: [String: String]?
 }
 
 struct CFPanicLanguage: Codable, Identifiable, Hashable {
@@ -98,15 +100,14 @@ enum CFPanicData {
         if let env = ProcessInfo.processInfo.environment["BLISS_CF_PROBLEMS"], !env.isEmpty {
             out.append(URL(fileURLWithPath: env))
         }
-        if let resourceURL = Bundle.main.resourceURL {
-            out.append(resourceURL.appendingPathComponent("problems/codeforces.json"))
-        }
+        out.append(URL(fileURLWithPath: "/usr/local/share/bliss/problems/codeforces.json"))
+        out.append(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/bliss/problems/codeforces.json"))
         let bundleRoot = URL(fileURLWithPath: Bundle.main.bundlePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        out.append(bundleRoot.appendingPathComponent("gui/problems/codeforces.json"))
-        out.append(URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("gui/problems/codeforces.json"))
+        out.append(bundleRoot.appendingPathComponent("problems/codeforces.json"))
+        out.append(URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("problems/codeforces.json"))
         return out
     }
 }
@@ -291,11 +292,11 @@ enum CFPanicJudge {
 }
 
 struct CodeforcesPanicView: View {
+    let difficulty: CFPanicDifficulty
     let onUnlock: () async -> Bool
 
     @State private var problems: [CFPanicProblem] = []
     @State private var languages: [CFPanicLanguage] = []
-    @State private var selectedProblemID = ""
     @State private var selectedLanguageID = ""
     @State private var code = ""
     @State private var resultText = ""
@@ -308,33 +309,59 @@ struct CodeforcesPanicView: View {
             Text("Codeforces Panic")
                 .font(.title3.weight(.semibold))
 
-            if problems.isEmpty || languages.isEmpty {
+            if filteredProblems.isEmpty || languages.isEmpty {
                 Text("Problem bank or language presets not found.")
                     .foregroundColor(.red)
-                Text("Expected: gui/problems/codeforces.json")
+                Text("Expected: /usr/local/share/bliss/problems/codeforces.json")
                     .font(.caption)
                     .foregroundColor(.secondary)
             } else {
                 HStack {
-                    Picker("Problem", selection: $selectedProblemID) {
-                        ForEach(problems) { p in
-                            Text("\(p.id) \(p.title)").tag(p.id)
-                        }
-                    }
-                    Picker("Language", selection: $selectedLanguageID) {
-                        ForEach(languages) { lang in
-                            Text(lang.displayName).tag(lang.id)
-                        }
-                    }
+                    Text("Problem").font(.callout.weight(.semibold))
+                    Spacer()
+                    Text(difficulty.rawValue.capitalized)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
-
                 if let problem = selectedProblem, let language = selectedLanguage {
+                    HStack {
+                        Text("\(problem.id) \(problem.title)")
+                            .font(.headline)
+                        Spacer()
+                        Picker("Language", selection: $selectedLanguageID) {
+                            ForEach(languages) { lang in
+                                Text(lang.displayName).tag(lang.id)
+                            }
+                        }
+                        .frame(width: 220)
+                    }
+
                     ScrollView {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(problem.title).bold()
+                            Text("Description")
+                                .font(.caption.weight(.semibold))
                             Text(problem.statement)
                                 .textSelection(.enabled)
                                 .font(.system(.body, design: .monospaced))
+
+                            if let input = problem.input {
+                                Text("Input")
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.top, 6)
+                                Text(input)
+                                    .textSelection(.enabled)
+                                    .font(.system(.body, design: .monospaced))
+                            }
+
+                            if let output = problem.output {
+                                Text("Output")
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.top, 6)
+                                Text(output)
+                                    .textSelection(.enabled)
+                                    .font(.system(.body, design: .monospaced))
+                            }
+
                             Text(problem.url)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
@@ -349,10 +376,6 @@ struct CodeforcesPanicView: View {
                         .font(.system(.body, design: .monospaced))
                         .frame(height: 220)
                         .border(.gray.opacity(0.3))
-                        .onChange(of: selectedProblemID) { _, _ in
-                            testsPassed = false
-                            code = ""
-                        }
                         .onChange(of: selectedLanguageID) { _, _ in
                             testsPassed = false
                             code = ""
@@ -384,17 +407,37 @@ struct CodeforcesPanicView: View {
         .onAppear {
             problems = CFPanicData.loadProblems()
             languages = CFPanicData.loadLanguages()
-            selectedProblemID = problems.first?.id ?? ""
             selectedLanguageID = languages.first?.id ?? ""
+            pickRandomProblem()
+        }
+        .onChange(of: difficulty) { _, _ in
+            pickRandomProblem()
         }
     }
 
     private var selectedProblem: CFPanicProblem? {
-        problems.first(where: { $0.id == selectedProblemID })
+        if let current = currentProblem {
+            return current
+        }
+        return filteredProblems.randomElement()
     }
 
     private var selectedLanguage: CFPanicLanguage? {
         languages.first(where: { $0.id == selectedLanguageID })
+    }
+
+    private var filteredProblems: [CFPanicProblem] {
+        let matches = problems.filter { $0.difficulty.lowercased() == difficulty.rawValue }
+        return matches.isEmpty ? problems : matches
+    }
+
+    @State private var currentProblem: CFPanicProblem?
+
+    private func pickRandomProblem() {
+        currentProblem = filteredProblems.randomElement()
+        testsPassed = false
+        code = ""
+        resultText = ""
     }
 
     private func runTests(problem: CFPanicProblem, language: CFPanicLanguage) {

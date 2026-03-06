@@ -35,7 +35,7 @@ struct ContentView: View {
             vm.stopAutoRefresh()
         }
         .sheet(isPresented: $vm.panicPresented) {
-            PanicChallengeView(quote: panicQuote, mode: vm.panicMode) {
+            PanicChallengeView(quote: panicQuote, mode: vm.panicMode, cfDifficulty: vm.cfDifficulty) {
                 await vm.panicFromGUI()
             }
         }
@@ -56,6 +56,8 @@ struct ContentView: View {
             switch result {
             case .success(let urls):
                 guard let url = urls.first else { return }
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
                 switch target {
                 case .app:
                     vm.addApp(path: url.path)
@@ -106,113 +108,142 @@ struct ContentView: View {
 
     private var configTab: some View {
         ZStack {
-            VStack(alignment: .leading, spacing: 12) {
-                if let error = vm.errorMessage {
-                    Text(error)
-                        .font(.callout)
-                        .foregroundColor(.red)
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-                }
-                HStack {
-                    Text("Quote Length")
-                    Picker(
-                        "Length",
-                        selection: Binding(
-                            get: { vm.quoteLength },
-                            set: { vm.setQuoteLength($0) }
-                        )
-                    ) {
-                        Text("Short").tag("short")
-                        Text("Medium").tag("medium")
-                        Text("Long").tag("long")
-                        Text("Huge").tag("huge")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if let error = vm.errorMessage {
+                        Text(error)
+                            .font(.callout)
+                            .foregroundColor(.red)
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
                     }
-                    .frame(width: 180)
-
-                    Divider().frame(height: 20)
-
-                    Text("Panic Mode")
-                    Picker(
-                        "Panic Mode",
-                        selection: Binding(
-                            get: { vm.panicMode },
-                            set: { vm.setPanicMode($0) }
-                        )
-                    ) {
-                        Text("Typing").tag(PanicModeSetting.typing)
-                        Text("Codeforces").tag(PanicModeSetting.codeforces)
-                    }
-                    .frame(width: 180)
-                }
-
-                HStack {
-                    TextField("Add website", text: $vm.websiteInput)
-                    Button("Add") { vm.addWebsite() }
-                }
-
-                List {
-                    Section("Blocked Websites") {
-                        if vm.websites.isEmpty {
-                            Text("No entries")
-                        } else {
-                            ForEach(vm.websites, id: \.self) { site in
-                                HStack {
-                                    Text(site)
-                                    Spacer()
-                                    Button("Remove") { vm.removeWebsite(site) }
-                                }
-                            }
+                    HStack {
+                        Text("Quote Length")
+                        Picker(
+                            "",
+                            selection: Binding(
+                                get: { vm.quoteLength },
+                                set: { vm.setQuoteLength($0) }
+                            )
+                        ) {
+                            Text("Short").tag("short")
+                            Text("Medium").tag("medium")
+                            Text("Long").tag("long")
+                            Text("Huge").tag("huge")
                         }
+                        .frame(width: 180)
+                        .labelsHidden()
+
+                        Divider().frame(height: 20)
+
+                        Text("Panic Mode")
+                        Picker(
+                            "",
+                            selection: Binding(
+                                get: { vm.panicMode },
+                                set: { vm.setPanicMode($0) }
+                            )
+                        ) {
+                            Text("Typing").tag(PanicModeSetting.typing)
+                            Text("Codeforces").tag(PanicModeSetting.codeforces)
+                        }
+                        .frame(width: 180)
+                        .labelsHidden()
+
+                        Divider().frame(height: 20)
+
+                        Text("CF Difficulty")
+                        Picker(
+                            "",
+                            selection: Binding(
+                                get: { vm.cfDifficulty },
+                                set: { vm.setCFDifficulty($0) }
+                            )
+                        ) {
+                            Text("Easy").tag(CFPanicDifficulty.easy)
+                            Text("Medium").tag(CFPanicDifficulty.medium)
+                            Text("Hard").tag(CFPanicDifficulty.hard)
+                        }
+                        .frame(width: 140)
+                        .labelsHidden()
                     }
 
-                    Section("Blocked Apps") {
-                        Button("Add") { importTarget = .app }
-                        if vm.apps.isEmpty {
-                            Text("No entries")
-                        } else {
-                            ForEach(vm.apps) { app in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(app.name)
-                                        if !app.path.isEmpty {
-                                            Text(app.path)
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                                .lineLimit(1)
-                                        } else if !app.bundle.isEmpty {
-                                            Text(app.bundle)
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                                .lineLimit(1)
-                                        }
+                    HStack {
+                        TextField("Add domain (example.com)", text: $vm.websiteInput)
+                        Button("Add") { vm.addWebsite() }
+                    }
+
+                    GroupBox("Blocked Websites") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            if vm.websites.isEmpty {
+                                Text("No entries")
+                            } else {
+                                ForEach(vm.websites, id: \.self) { site in
+                                    HStack {
+                                        Text(site)
+                                        Spacer()
+                                        Button("Remove") { vm.removeWebsite(site) }
                                     }
-                                    Spacer()
-                                    Button("Remove") { vm.removeApp(app) }
                                 }
                             }
                         }
+                        .padding(.top, 6)
                     }
 
-                    Section("Browsers") {
-                        Button("Add") { importTarget = .browser }
-                        if vm.browsers.isEmpty {
-                            Text("No entries")
-                        } else {
-                            ForEach(vm.browsers, id: \.self) { browser in
-                                HStack {
-                                    Text(browser)
-                                    Spacer()
-                                    Button("Remove") { vm.removeBrowser(browser) }
+                    GroupBox("Blocked Apps") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Button("Add") { importTarget = .app }
+                            if vm.apps.isEmpty {
+                                Text("No entries")
+                            } else {
+                                ForEach(vm.apps) { app in
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(app.name)
+                                            if !app.path.isEmpty {
+                                                Text(app.path)
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                                    .lineLimit(1)
+                                            } else if !app.bundle.isEmpty {
+                                                Text(app.bundle)
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                                    .lineLimit(1)
+                                            }
+                                        }
+                                        Spacer()
+                                        Button("Remove") { vm.removeApp(app) }
+                                    }
                                 }
                             }
                         }
+                        .padding(.top, 6)
+                    }
+
+                    GroupBox("Browsers") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Button("Add") { importTarget = .browser }
+                            if vm.browsers.isEmpty {
+                                Text("No entries")
+                            } else {
+                                ForEach(vm.browsers, id: \.self) { browser in
+                                    HStack {
+                                        Text(browser)
+                                        Spacer()
+                                        Button("Remove") { vm.removeBrowser(browser) }
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.top, 6)
                     }
                 }
+                .disabled(vm.isSessionActive)
+                .opacity(vm.isSessionActive ? 0.4 : 1.0)
+                .padding(20)
             }
-            .disabled(vm.isSessionActive)
-            .opacity(vm.isSessionActive ? 0.4 : 1.0)
 
             if vm.isSessionActive {
                 Text("Config is locked while a session is active.")
@@ -222,6 +253,5 @@ struct ContentView: View {
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
         }
-        .padding(20)
     }
 }

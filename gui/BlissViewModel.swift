@@ -5,6 +5,12 @@ enum PanicModeSetting: String, CaseIterable {
     case codeforces = "codeforces"
 }
 
+enum CFPanicDifficulty: String, CaseIterable {
+    case easy = "easy"
+    case medium = "medium"
+    case hard = "hard"
+}
+
 struct AppEntryModel: Identifiable, Hashable {
     let raw: String
     let name: String
@@ -26,15 +32,19 @@ final class BlissViewModel: ObservableObject {
     @Published var websiteInput = ""
     @Published var quoteLength = "medium"
     @Published var panicMode: PanicModeSetting = .typing
+    @Published var cfDifficulty: CFPanicDifficulty = .easy
     @Published var output = ""
     @Published var errorMessage: String?
     @Published var panicPresented = false
     @Published var isSessionActive = false
+    @Published var endTimeEpoch: Int64?
 
     private var refreshTask: Task<Void, Never>?
+    private var tickerTask: Task<Void, Never>?
 
     deinit {
         refreshTask?.cancel()
+        tickerTask?.cancel()
     }
 
     func startAutoRefresh() {
@@ -43,19 +53,23 @@ final class BlissViewModel: ObservableObject {
             while !Task.isCancelled {
                 syncQuoteLengthFromConfig()
                 await refreshStatusAsync()
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
             }
         }
+        startTicker()
     }
 
     func stopAutoRefresh() {
         refreshTask?.cancel()
         refreshTask = nil
+        tickerTask?.cancel()
+        tickerTask = nil
     }
 
     func refreshAll() {
         syncQuoteLengthFromConfig()
         syncPanicModeFromConfig()
+        syncCFDifficultyFromConfig()
         Task {
             await refreshStatusAsync()
             if isSessionActive {
@@ -147,6 +161,12 @@ final class BlissViewModel: ObservableObject {
         savePanicModeToConfig()
     }
 
+    func setCFDifficulty(_ difficulty: CFPanicDifficulty) {
+        guard !isSessionActive else { return }
+        cfDifficulty = difficulty
+        saveCFDifficultyToConfig()
+    }
+
     func panicFromGUI() async -> Bool {
         let result = await Task.detached { BlissCommand.run(["panic", "--skip-challenge"]) }.value
         output = result.combinedOutput
@@ -226,6 +246,29 @@ final class BlissViewModel: ObservableObject {
             .appendingPathComponent(".config/bliss/panic_mode.txt")
     }
 
+    private func syncCFDifficultyFromConfig() {
+        let url = cfDifficultyConfigURL()
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else {
+            cfDifficulty = .easy
+            return
+        }
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        cfDifficulty = CFPanicDifficulty(rawValue: value) ?? .easy
+    }
+
+    private func saveCFDifficultyToConfig() {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = cfDifficultyConfigURL()
+        try? (cfDifficulty.rawValue + "\n").data(using: .utf8)?.write(to: url)
+    }
+
+    private func cfDifficultyConfigURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss/panic_difficulty.txt")
+    }
+
     private func refreshStatusAsync() async {
         let result = await Task.detached { BlissCommand.run(["status"]) }.value
         if result.code != 0 {
@@ -233,6 +276,7 @@ final class BlissViewModel: ObservableObject {
             remainingText = "remaining: -"
             pfText = "pf table active: -"
             isSessionActive = false
+            endTimeEpoch = nil
             output = result.combinedOutput
             errorMessage = actionableMessage(from: result.combinedOutput)
             return
@@ -243,6 +287,35 @@ final class BlissViewModel: ObservableObject {
         pfText = lines.first(where: { $0.hasPrefix("pf table active:") }) ?? "pf table active: unknown"
         isSessionActive = (statusText == "status: running")
         errorMessage = nil
+
+        if let endLine = lines.first(where: { $0.hasPrefix("ends at (epoch):") }) {
+            let raw = endLine.replacingOccurrences(of: "ends at (epoch):", with: "")
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            endTimeEpoch = Int64(trimmed)
+        } else {
+            endTimeEpoch = nil
+        }
+    }
+
+    private func startTicker() {
+        tickerTask?.cancel()
+        tickerTask = Task {
+            while !Task.isCancelled {
+                await MainActor.run {
+                    updateRemainingFromEpoch()
+                }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
+    }
+
+    private func updateRemainingFromEpoch() {
+        guard let end = endTimeEpoch else { return }
+        let now = Int64(Date().timeIntervalSince1970)
+        let remaining = max(0, end - now)
+        let minutes = remaining / 60
+        let seconds = remaining % 60
+        remainingText = "remaining: \(minutes)m \(String(format: "%02d", seconds))s"
     }
 
     private func refreshWebsitesAsync() async {
