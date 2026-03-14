@@ -1,0 +1,810 @@
+[
+  {
+    "id": "cses-1068",
+    "title": "Weird Algorithm",
+    "url": "https://cses.fi/problemset/task/1068",
+    "difficulty": "easy",
+    "statement": "Consider an algorithm that takes as input a positive integer n. If n is even, the algorithm divides it by two, and if n is odd, the algorithm multiplies it by three and adds one. The algorithm repeats this, until n is one. For example, the sequence for n=3 is as follows:\n3 \\rightarrow 10 \\rightarrow 5 \\rightarrow 16 \\rightarrow 8 \\rightarrow 4 \\rightarrow 2 \\rightarrow 1\nYour task is to simulate the execution of the algorithm for a given value of n.",
+    "input": "The only input line contains an integer n.",
+    "output": "Print a line that contains all values of n during the algorithm.",
+    "constraints": "• 1 \\le n \\le 10^6",
+    "tests": [
+      {
+        "input": "3\n",
+        "output": "3 10 5 16 8 4 2 1\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1083",
+    "title": "Missing Number",
+    "url": "https://cses.fi/problemset/task/1083",
+    "difficulty": "easy",
+    "statement": "You are given all numbers between 1,2,\\ldots,n except one. Your task is to find the missing number.",
+    "input": "The first input line contains an integer n.\n\nThe second line contains n-1 numbers. Each number is distinct and between 1 and n (inclusive).",
+    "output": "Print the missing number.",
+    "constraints": "• 2 \\le n \\le 2 \\cdot 10^5",
+    "tests": [
+      {
+        "input": "5\n2 3 1 5\n",
+        "output": "4\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1069",
+    "title": "Repetitions",
+    "url": "https://cses.fi/problemset/task/1069",
+    "difficulty": "easy",
+    "statement": "You are given a DNA sequence: a string consisting of characters A, C, G, and T. Your task is to find the longest repetition in the sequence. This is a maximum-length substring containing only one type of character.",
+    "input": "The only input line contains a string of n characters.",
+    "output": "Print one integer: the length of the longest repetition.",
+    "constraints": "• 1 \\le n \\le 10^6",
+    "tests": [
+      {
+        "input": "ATTCGGGA\n",
+        "output": "3\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1094",
+    "title": "Increasing Array",
+    "url": "https://cses.fi/problemset/task/1094",
+    "difficulty": "easy",
+    "statement": "You are given an array of n integers. You want to modify the array so that it is increasing, i.e., every element is at least as large as the previous element.\n\nOn each move, you may increase the value of any element by one. What is the minimum number of moves required?",
+    "input": "The first input line contains an integer n: the size of the array.\n\nThen, the second line contains n integers x_1,x_2,\\ldots,x_n: the contents of the array.",
+    "output": "Print the minimum number of moves.",
+    "constraints": "• 1 \\le n \\le 2 \\cdot 10^5\n• 1 \\le x_i \\le 10^9",
+    "tests": [
+      {
+        "input": "5\n3 2 5 1 7\n",
+        "output": "5\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1070",
+    "title": "Permutations",
+    "url": "https://cses.fi/problemset/task/1070",
+    "difficulty": "easy",
+    "statement": "A permutation of integers 1,2,\\ldots,n is called beautiful if there are no adjacent elements whose difference is 1.\n\nGiven n, construct a beautiful permutation if such a permutation exists.",
+    "input": "The only input line contains an integer n.",
+    "output": "Print a beautiful permutation of integers 1,2,\\ldots,n. If there are several solutions, you may print any of them. If there are no solutions, print \"NO SOLUTION\".",
+    "constraints": "• 1 \\le n \\le 10^6\n\nExample 1\nInput:\n5\n\nOutput:\n4 2 5 3 1\nExample 2\nInput:\n3\n\nOutput:\nNO SOLUTION",
+    "tests": [
+      {
+        "input": "5\n",
+        "output": "4 2 5 3 1\n"
+      },
+      {
+        "input": "3\n",
+        "output": "NO SOLUTION\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1071",
+    "title": "Number Spiral",
+    "url": "https://cses.fi/problemset/task/1071",
+    "difficulty": "easy",
+    "statement": "A number spiral is an infinite grid whose upper-left square has number 1. Here are the first five layers of the spiral:\n\nYour task is to find out the number in row y and column x.",
+    "input": "The first input line contains an integer t: the number of tests.\n\nAfter this, there are t lines, each containing integers y and x.",
+    "output": "For each test, print the number in row y and column x.",
+    "constraints": "• 1 \\le t \\le 10^5\n• 1 \\le y,x \\le 10^9",
+    "tests": [
+      {
+        "input": "3\n2 3\n1 1\n4 2\n",
+        "output": "8\n1\n15\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1072",
+    "title": "Two Knights",
+    "url": "https://cses.fi/problemset/task/1072",
+    "difficulty": "easy",
+    "statement": "Your task is to count for k=1,2,\\ldots,n the number of ways two knights can be placed on a k \\times k chessboard so that they do not attack each other.",
+    "input": "The only input line contains an integer n.",
+    "output": "Print n integers: the results.",
+    "constraints": "• 1 \\le n \\le 10000",
+    "tests": [
+      {
+        "input": "8\n",
+        "output": "0\n6\n28\n96\n252\n550\n1056\n1848\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1092",
+    "title": "Two Sets",
+    "url": "https://cses.fi/problemset/task/1092",
+    "difficulty": "easy",
+    "statement": "Your task is to divide the numbers 1,2,\\ldots,n into two sets of equal sum.",
+    "input": "The only input line contains an integer n.",
+    "output": "Print \"YES\", if the division is possible, and \"NO\" otherwise.\n\nAfter this, if the division is possible, print an example of how to create the sets. First, print the number of elements in the first set followed by the elements themselves in a separate line, and then, print the second set in a similar way.",
+    "constraints": "• 1 \\le n \\le 10^6\n\nExample 1\nInput:\n7\n\nOutput:\nYES\n4\n1 2 4 7\n3\n3 5 6\nExample 2\nInput:\n6\n\nOutput:\nNO",
+    "tests": [
+      {
+        "input": "7\n",
+        "output": "YES\n4\n1 2 4 7\n3\n3 5 6\n"
+      },
+      {
+        "input": "6\n",
+        "output": "NO\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1617",
+    "title": "Bit Strings",
+    "url": "https://cses.fi/problemset/task/1617",
+    "difficulty": "easy",
+    "statement": "Your task is to calculate the number of bit strings of length n.\n\nFor example, if n=3, the correct answer is 8, because the possible bit strings are 000, 001, 010, 011, 100, 101, 110, and 111.",
+    "input": "The only input line has an integer n.",
+    "output": "Print the result modulo 10^9+7.",
+    "constraints": "• 1 \\le n \\le 10^6",
+    "tests": [
+      {
+        "input": "3\n",
+        "output": "8\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1618",
+    "title": "Trailing Zeros",
+    "url": "https://cses.fi/problemset/task/1618",
+    "difficulty": "easy",
+    "statement": "Your task is to calculate the number of trailing zeros in the factorial n!.\n\nFor example, 20!=2432902008176640000 and it has 4 trailing zeros.",
+    "input": "The only input line has an integer n.",
+    "output": "Print the number of trailing zeros in n!.",
+    "constraints": "• 1 \\le n \\le 10^9",
+    "tests": [
+      {
+        "input": "20\n",
+        "output": "4\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1754",
+    "title": "Coin Piles",
+    "url": "https://cses.fi/problemset/task/1754",
+    "difficulty": "easy",
+    "statement": "You have two coin piles containing a and b coins. On each move, you can either remove one coin from the left pile and two coins from the right pile, or two coins from the left pile and one coin from the right pile.\n\nYour task is to efficiently find out if you can empty both the piles.",
+    "input": "The first input line has an integer t: the number of tests.\n\nAfter this, there are t lines, each of which has two integers a and b: the numbers of coins in the piles.",
+    "output": "For each test, print \"YES\" if you can empty the piles and \"NO\" otherwise.",
+    "constraints": "• 1 \\le t \\le 10^5\n• 0 \\le a, b \\le 10^9",
+    "tests": [
+      {
+        "input": "3\n2 1\n2 2\n3 3\n",
+        "output": "YES\nNO\nYES\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-2205",
+    "title": "Gray Code",
+    "url": "https://cses.fi/problemset/task/2205",
+    "difficulty": "easy",
+    "statement": "A Gray code is a list of all 2^n bit strings of length n, where any two successive strings differ in exactly one bit (i.e., their Hamming distance is one).\n\nYour task is to create a Gray code for a given length n.",
+    "input": "The only input line has an integer n.",
+    "output": "Print 2^n lines that describe the Gray code. You can print any valid solution.",
+    "constraints": "• 1 \\le n \\le 16",
+    "tests": [
+      {
+        "input": "2\n",
+        "output": "00\n01\n11\n10\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-2165",
+    "title": "Tower of Hanoi",
+    "url": "https://cses.fi/problemset/task/2165",
+    "difficulty": "easy",
+    "statement": "The Tower of Hanoi game consists of three stacks (left, middle and right) and n round disks of different sizes. Initially, the left stack has all the disks, in increasing order of size from top to bottom.\n\nThe goal is to move all the disks to the right stack using the middle stack. On each move you can move the uppermost disk from a stack to another stack. In addition, it is not allowed to place a larger disk on a smaller disk.\n\nYour task is to find a solution that minimizes the number of moves.",
+    "input": "The only input line has an integer n: the number of disks.",
+    "output": "First print an integer k: the minimum number of moves.\n\nAfter this, print k lines that describe the moves. Each line has two integers a and b: you move a disk from stack a to stack b.",
+    "constraints": "• 1 \\le n \\le 16",
+    "tests": [
+      {
+        "input": "2\n",
+        "output": "3\n1 2\n1 3\n2 3\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1621",
+    "title": "Distinct Numbers",
+    "url": "https://cses.fi/problemset/task/1621",
+    "difficulty": "easy",
+    "statement": "You are given a list of n integers, and your task is to calculate the number of distinct values in the list.",
+    "input": "The first input line has an integer n: the number of values.\n\nThe second line has n integers x_1,x_2,\\dots,x_n.",
+    "output": "Print one integers: the number of distinct values.",
+    "constraints": "• 1 \\le n \\le 2 \\cdot 10^5\n• 1 \\le x_i \\le 10^9",
+    "tests": [
+      {
+        "input": "5\n2 3 2 2 3\n",
+        "output": "2\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1084",
+    "title": "Apartments",
+    "url": "https://cses.fi/problemset/task/1084",
+    "difficulty": "easy",
+    "statement": "There are n applicants and m free apartments. Your task is to distribute the apartments so that as many applicants as possible will get an apartment.\n\nEach applicant has a desired apartment size, and they will accept any apartment whose size is close enough to the desired size.",
+    "input": "The first input line has three integers n, m, and k: the number of applicants, the number of apartments, and the maximum allowed difference.\n\nThe next line contains n integers a_1, a_2, \\ldots, a_n: the desired apartment size of each applicant. If the desired size of an applicant is x, they will accept any apartment whose size is between x-k and x+k.\n\nThe last line contains m integers b_1, b_2, \\ldots, b_m: the size of each apartment.",
+    "output": "Print one integer: the number of applicants who will get an apartment.",
+    "constraints": "• 1 \\le n, m \\le 2 \\cdot 10^5\n• 0 \\le k \\le 10^9\n• 1 \\le a_i, b_i \\le 10^9",
+    "tests": [
+      {
+        "input": "4 3 5\n60 45 80 60\n30 60 75\n",
+        "output": "2\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1090",
+    "title": "Ferris Wheel",
+    "url": "https://cses.fi/problemset/task/1090",
+    "difficulty": "easy",
+    "statement": "There are n children who want to go to a Ferris wheel, and your task is to find a gondola for each child.\n\nEach gondola may have one or two children in it, and in addition, the total weight in a gondola may not exceed x. You know the weight of every child.\n\nWhat is the minimum number of gondolas needed for the children?",
+    "input": "The first input line contains two integers n and x: the number of children and the maximum allowed weight.\n\nThe next line contains n integers p_1,p_2,\\ldots,p_n: the weight of each child.",
+    "output": "Print one integer: the minimum number of gondolas.",
+    "constraints": "• 1 \\le n \\le 2 \\cdot 10^5\n• 1 \\le x \\le 10^9\n• 1 \\le p_i \\le x",
+    "tests": [
+      {
+        "input": "4 10\n7 2 3 9\n",
+        "output": "3\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1091",
+    "title": "Concert Tickets",
+    "url": "https://cses.fi/problemset/task/1091",
+    "difficulty": "easy",
+    "statement": "There are n concert tickets available, each with a certain price. Then, m customers arrive, one after another.\n\nEach customer announces the maximum price they are willing to pay for a ticket, and after this, they will get a ticket with the nearest possible price such that it does not exceed the maximum price.",
+    "input": "The first input line contains integers n and m: the number of tickets and the number of customers.\n\nThe next line contains n integers h_1,h_2,\\ldots,h_n: the price of each ticket.\n\nThe last line contains m integers t_1,t_2,\\ldots,t_m: the maximum price for each customer in the order they arrive.",
+    "output": "Print, for each customer, the price that they will pay for their ticket. After this, the ticket cannot be purchased again.\n\nIf a customer cannot get any ticket, print -1.",
+    "constraints": "• 1 \\le n, m \\le 2 \\cdot 10^5\n• 1 \\le h_i, t_i \\le 10^9",
+    "tests": [
+      {
+        "input": "5 3\n5 3 7 8 5\n4 8 3\n",
+        "output": "3\n8\n-1\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1619",
+    "title": "Restaurant Customers",
+    "url": "https://cses.fi/problemset/task/1619",
+    "difficulty": "easy",
+    "statement": "You are given the arrival and leaving times of n customers in a restaurant.\n\nWhat was the maximum number of customers in the restaurant at any time?",
+    "input": "The first input line has an integer n: the number of customers.\n\nAfter this, there are n lines that describe the customers. Each line has two integers a and b: the arrival and leaving times of a customer.\n\nYou may assume that all arrival and leaving times are distinct.",
+    "output": "Print one integer: the maximum number of customers.",
+    "constraints": "• 1 \\le n \\le 2 \\cdot 10^5\n• 1 \\le a < b \\le 10^9",
+    "tests": [
+      {
+        "input": "3\n5 8\n2 4\n3 9\n",
+        "output": "2\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1629",
+    "title": "Movie Festival",
+    "url": "https://cses.fi/problemset/task/1629",
+    "difficulty": "easy",
+    "statement": "In a movie festival n movies will be shown. You know the starting and ending time of each movie. What is the maximum number of movies you can watch entirely?",
+    "input": "The first input line has an integer n: the number of movies.\n\nAfter this, there are n lines that describe the movies. Each line has two integers a and b: the starting and ending times of a movie.",
+    "output": "Print one integer: the maximum number of movies.",
+    "constraints": "• 1 \\le n \\le 2 \\cdot 10^5\n• 1 \\le a < b \\le 10^9",
+    "tests": [
+      {
+        "input": "3\n3 5\n4 9\n5 8\n",
+        "output": "2\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1640",
+    "title": "Sum of Two Values",
+    "url": "https://cses.fi/problemset/task/1640",
+    "difficulty": "easy",
+    "statement": "You are given an array of n integers, and your task is to find two values (at distinct positions) whose sum is x.",
+    "input": "The first input line has two integers n and x: the array size and the target sum.\n\nThe second line has n integers a_1,a_2,\\dots,a_n: the array values.",
+    "output": "Print two integers: the positions of the values. If there are several solutions, you may print any of them. If there are no solutions, print IMPOSSIBLE.",
+    "constraints": "• 1 \\le n \\le 2 \\cdot 10^5\n• 1 \\le x,a_i \\le 10^9",
+    "tests": [
+      {
+        "input": "4 8\n2 7 5 1\n",
+        "output": "2 4\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1643",
+    "title": "Maximum Subarray Sum",
+    "url": "https://cses.fi/problemset/task/1643",
+    "difficulty": "easy",
+    "statement": "Given an array of n integers, your task is to find the maximum sum of values in a contiguous, nonempty subarray.",
+    "input": "The first input line has an integer n: the size of the array.\n\nThe second line has n integers x_1,x_2,\\dots,x_n: the array values.",
+    "output": "Print one integer: the maximum subarray sum.",
+    "constraints": "• 1 \\le n \\le 2 \\cdot 10^5\n• -10^9 \\le x_i \\le 10^9",
+    "tests": [
+      {
+        "input": "8\n-1 3 -2 5 3 -5 2 2\n",
+        "output": "9\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1074",
+    "title": "Stick Lengths",
+    "url": "https://cses.fi/problemset/task/1074",
+    "difficulty": "easy",
+    "statement": "There are n sticks with some lengths. Your task is to modify the sticks so that each stick has the same length.\n\nYou can either lengthen and shorten each stick. Both operations cost x where x is the difference between the new and original length.\n\nWhat is the minimum total cost?",
+    "input": "The first input line contains an integer n: the number of sticks.\n\nThen there are n integers: p_1,p_2,\\ldots,p_n: the lengths of the sticks.",
+    "output": "Print one integer: the minimum total cost.",
+    "constraints": "• 1 \\le n \\le 2 \\cdot 10^5\n• 1 \\le p_i \\le 10^9",
+    "tests": [
+      {
+        "input": "5\n2 3 1 5 2\n",
+        "output": "5\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-2183",
+    "title": "Missing Coin Sum",
+    "url": "https://cses.fi/problemset/task/2183",
+    "difficulty": "easy",
+    "statement": "You have n coins with positive integer values. What is the smallest sum you cannot create using a subset of the coins?",
+    "input": "The first line has an integer n: the number of coins.\n\nThe second line has n integers x_1,x_2,\\dots,x_n: the value of each coin.",
+    "output": "Print one integer: the smallest coin sum.",
+    "constraints": "• 1 \\le n \\le 2 \\cdot 10^5\n• 1 \\le x_i \\le 10^9",
+    "tests": [
+      {
+        "input": "5\n2 9 1 2 7\n",
+        "output": "6\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-2216",
+    "title": "Collecting Numbers",
+    "url": "https://cses.fi/problemset/task/2216",
+    "difficulty": "easy",
+    "statement": "You are given an array that contains each number between 1 \\dots n exactly once. Your task is to collect the numbers from 1 to n in increasing order.\n\nOn each round, you go through the array from left to right and collect as many numbers as possible. What will be the total number of rounds?",
+    "input": "The first line has an integer n: the array size.\n\nThe next line has n integers x_1,x_2,\\dots,x_n: the numbers in the array.",
+    "output": "Print one integer: the number of rounds.",
+    "constraints": "• 1 \\le n \\le 2 \\cdot 10^5",
+    "tests": [
+      {
+        "input": "5\n4 2 1 5 3\n",
+        "output": "3\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1164",
+    "title": "Room Allocation",
+    "url": "https://cses.fi/problemset/task/1164",
+    "difficulty": "easy",
+    "statement": "There is a large hotel, and n customers will arrive soon. Each customer wants to have a single room.\n\nYou know each customer's arrival and departure day. Two customers can stay in the same room if the departure day of the first customer is earlier than the arrival day of the second customer.\n\nWhat is the minimum number of rooms that are needed to accommodate all customers? And how can the rooms be allocated?",
+    "input": "The first input line contains an integer n: the number of customers.\n\nThen there are n lines, each of which describes one customer. Each line has two integers a and b: the arrival and departure day.",
+    "output": "Print first an integer k: the minimum number of rooms required.\n\nAfter that, print a line that contains the room number of each customer in the same order as in the input. The rooms are numbered 1,2,\\ldots,k. You can print any valid solution.",
+    "constraints": "• 1 \\le n \\le 2 \\cdot 10^5\n• 1 \\le a \\le b \\le 10^9",
+    "tests": [
+      {
+        "input": "3\n1 2\n2 4\n4 4\n",
+        "output": "2\n1 2 1\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1633",
+    "title": "Dice Combinations",
+    "url": "https://cses.fi/problemset/task/1633",
+    "difficulty": "medium",
+    "statement": "Your task is to count the number of ways to construct sum n by throwing a dice one or more times. Each throw produces an outcome between 1 and 6.\n\nFor example, if n=3, there are 4 ways:\n\n• 1+1+1\n• 1+2\n• 2+1\n• 3",
+    "input": "The only input line has an integer n.",
+    "output": "Print the number of ways modulo 10^9+7.",
+    "constraints": "• 1 \\le n \\le 10^6",
+    "tests": [
+      {
+        "input": "3\n",
+        "output": "4\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1634",
+    "title": "Minimizing Coins",
+    "url": "https://cses.fi/problemset/task/1634",
+    "difficulty": "medium",
+    "statement": "Consider a money system consisting of n coins. Each coin has a positive integer value. Your task is to produce a sum of money x using the available coins in such a way that the number of coins is minimal.\n\nFor example, if the coins are \\{1,5,7\\} and the desired sum is 11, an optimal solution is 5+5+1 which requires 3 coins.",
+    "input": "The first input line has two integers n and x: the number of coins and the desired sum of money.\n\nThe second line has n distinct integers c_1,c_2,\\dots,c_n: the value of each coin.",
+    "output": "Print one integer: the minimum number of coins. If it is not possible to produce the desired sum, print -1.",
+    "constraints": "• 1 \\le n \\le 100\n• 1 \\le x \\le 10^6\n• 1 \\le c_i \\le 10^6",
+    "tests": [
+      {
+        "input": "3 11\n1 5 7\n",
+        "output": "3\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1635",
+    "title": "Coin Combinations I",
+    "url": "https://cses.fi/problemset/task/1635",
+    "difficulty": "medium",
+    "statement": "Consider a money system consisting of n coins. Each coin has a positive integer value. Your task is to calculate the number of distinct ways you can produce a money sum x using the available coins.\n\nFor example, if the coins are \\{2,3,5\\} and the desired sum is 9, there are 8 ways:\n\n• 2+2+5\n• 2+5+2\n• 5+2+2\n• 3+3+3\n• 2+2+2+3\n• 2+2+3+2\n• 2+3+2+2\n• 3+2+2+2",
+    "input": "The first input line has two integers n and x: the number of coins and the desired sum of money.\n\nThe second line has n distinct integers c_1,c_2,\\dots,c_n: the value of each coin.",
+    "output": "Print one integer: the number of ways modulo 10^9+7.",
+    "constraints": "• 1 \\le n \\le 100\n• 1 \\le x \\le 10^6\n• 1 \\le c_i \\le 10^6",
+    "tests": [
+      {
+        "input": "3 9\n2 3 5\n",
+        "output": "8\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1636",
+    "title": "Coin Combinations II",
+    "url": "https://cses.fi/problemset/task/1636",
+    "difficulty": "medium",
+    "statement": "Consider a money system consisting of n coins. Each coin has a positive integer value. Your task is to calculate the number of distinct ordered ways you can produce a money sum x using the available coins.\n\nFor example, if the coins are \\{2,3,5\\} and the desired sum is 9, there are 3 ways:\n\n• 2+2+5\n• 3+3+3\n• 2+2+2+3",
+    "input": "The first input line has two integers n and x: the number of coins and the desired sum of money.\n\nThe second line has n distinct integers c_1,c_2,\\dots,c_n: the value of each coin.",
+    "output": "Print one integer: the number of ways modulo 10^9+7.",
+    "constraints": "• 1 \\le n \\le 100\n• 1 \\le x \\le 10^6\n• 1 \\le c_i \\le 10^6",
+    "tests": [
+      {
+        "input": "3 9\n2 3 5\n",
+        "output": "3\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1637",
+    "title": "Removing Digits",
+    "url": "https://cses.fi/problemset/task/1637",
+    "difficulty": "medium",
+    "statement": "You are given an integer n. On each step, you may subtract one of the digits from the number.\n\nHow many steps are required to make the number equal to 0?",
+    "input": "The only input line has an integer n.",
+    "output": "Print one integer: the minimum number of steps.",
+    "constraints": "• 1 \\le n \\le 10^6",
+    "tests": [
+      {
+        "input": "27\n",
+        "output": "5\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1638",
+    "title": "Grid Paths I",
+    "url": "https://cses.fi/problemset/task/1638",
+    "difficulty": "medium",
+    "statement": "Consider an n \\times n grid whose squares may have traps. It is not allowed to move to a square with a trap.\n\nYour task is to calculate the number of paths from the upper-left square to the lower-right square. You can only move right or down.",
+    "input": "The first input line has an integer n: the size of the grid.\n\nAfter this, there are n lines that describe the grid. Each line has n characters: . denotes an empty cell, and * denotes a trap.",
+    "output": "Print the number of paths modulo 10^9+7.",
+    "constraints": "• 1 \\le n \\le 1000",
+    "tests": [
+      {
+        "input": "4\n....\n.*..\n...*\n*...\n",
+        "output": "3\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-2413",
+    "title": "Counting Towers",
+    "url": "https://cses.fi/problemset/task/2413",
+    "difficulty": "medium",
+    "statement": "Your task is to build a tower whose width is 2 and height is n. You have an unlimited supply of blocks whose width and height are integers.\n\nFor example, here are some possible solutions for n=6:\n\nGiven n, how many different towers can you build? Mirrored and rotated towers are counted separately if they look different.",
+    "input": "The first input line contains an integer t: the number of tests.\n\nAfter this, there are t lines, and each line contains an integer n: the height of the tower.",
+    "output": "For each test, print the number of towers modulo 10^9+7.",
+    "constraints": "• 1 \\le t \\le 100\n• 1 \\le n \\le 10^6",
+    "tests": [
+      {
+        "input": "3\n2\n6\n1337\n",
+        "output": "8\n2864\n640403945\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1744",
+    "title": "Rectangle Cutting",
+    "url": "https://cses.fi/problemset/task/1744",
+    "difficulty": "medium",
+    "statement": "Given an a \\times b rectangle, your task is to cut it into squares. On each move you can select a rectangle and cut it into two rectangles in such a way that all side lengths remain integers. What is the minimum possible number of moves?",
+    "input": "The only input line has two integers a and b.",
+    "output": "Print one integer: the minimum number of moves.",
+    "constraints": "• 1 \\le a,b \\le 500",
+    "tests": [
+      {
+        "input": "3 5\n",
+        "output": "3\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1745",
+    "title": "Money Sums",
+    "url": "https://cses.fi/problemset/task/1745",
+    "difficulty": "medium",
+    "statement": "You have n coins with certain values. Your task is to find all money sums you can create using these coins.",
+    "input": "The first input line has an integer n: the number of coins.\n\nThe next line has n integers x_1,x_2,\\dots,x_n: the values of the coins.",
+    "output": "First print an integer k: the number of distinct money sums. After this, print all possible sums in increasing order.",
+    "constraints": "• 1 \\le n \\le 100\n• 1 \\le x_i \\le 1000",
+    "tests": [
+      {
+        "input": "4\n4 2 5 2\n",
+        "output": "9\n2 4 5 6 7 8 9 11 13\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1097",
+    "title": "Removal Game",
+    "url": "https://cses.fi/problemset/task/1097",
+    "difficulty": "medium",
+    "statement": "There is a list of n numbers and two players who move alternately. On each move, a player removes either the first or last number from the list, and their score increases by that number. Both players try to maximize their scores.\n\nWhat is the maximum possible score for the first player when both players play optimally?",
+    "input": "The first input line contains an integer n: the size of the list.\n\nThe next line has n integers x_1,x_2,\\ldots,x_n: the contents of the list.",
+    "output": "Print the maximum possible score for the first player.",
+    "constraints": "• 1 \\le n \\le 5000\n• -10^9 \\le x_i \\le 10^9",
+    "tests": [
+      {
+        "input": "4\n4 5 1 3\n",
+        "output": "8\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1192",
+    "title": "Counting Rooms",
+    "url": "https://cses.fi/problemset/task/1192",
+    "difficulty": "medium",
+    "statement": "You are given a map of a building, and your task is to count the number of its rooms. The size of the map is n \\times m squares, and each square is either floor or wall. You can walk left, right, up, and down through the floor squares.",
+    "input": "The first input line has two integers n and m: the height and width of the map.\n\nThen there are n lines of m characters describing the map. Each character is either . (floor) or # (wall).",
+    "output": "Print one integer: the number of rooms.",
+    "constraints": "• 1 \\le n,m \\le 1000",
+    "tests": [
+      {
+        "input": "5 8\n########\n#..#...#\n####.#.#\n#..#...#\n########\n",
+        "output": "3\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1666",
+    "title": "Building Roads",
+    "url": "https://cses.fi/problemset/task/1666",
+    "difficulty": "medium",
+    "statement": "Byteland has n cities, and m roads between them. The goal is to construct new roads so that there is a route between any two cities.\n\nYour task is to find out the minimum number of roads required, and also determine which roads should be built.",
+    "input": "The first input line has two integers n and m: the number of cities and roads. The cities are numbered 1,2,\\dots,n.\n\nAfter that, there are m lines describing the roads. Each line has two integers a and b: there is a road between those cities.\n\nA road always connects two different cities, and there is at most one road between any two cities.",
+    "output": "First print an integer k: the number of required roads.\n\nThen, print k lines that describe the new roads. You can print any valid solution.",
+    "constraints": "• 1 \\le n \\le 10^5\n• 1 \\le m \\le 2 \\cdot 10^5\n• 1 \\le a,b \\le n",
+    "tests": [
+      {
+        "input": "4 2\n1 2\n3 4\n",
+        "output": "1\n2 3\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1667",
+    "title": "Message Route",
+    "url": "https://cses.fi/problemset/task/1667",
+    "difficulty": "medium",
+    "statement": "Syrjälä's network has n computers and m connections. Your task is to find out if Uolevi can send a message to Maija, and if it is possible, what is the minimum number of computers on such a route.",
+    "input": "The first input line has two integers n and m: the number of computers and connections. The computers are numbered 1,2,\\dots,n. Uolevi's computer is 1 and Maija's computer is n.\n\nThen, there are m lines describing the connections. Each line has two integers a and b: there is a connection between those computers.\n\nEvery connection is between two different computers, and there is at most one connection between any two computers.",
+    "output": "If it is possible to send a message, first print k: the minimum number of computers on a valid route. After this, print an example of such a route. You can print any valid solution.\n\nIf there are no routes, print \"IMPOSSIBLE\".",
+    "constraints": "• 2 \\le n \\le 10^5\n• 1 \\le m \\le 2 \\cdot 10^5\n• 1 \\le a,b \\le n",
+    "tests": [
+      {
+        "input": "5 5\n1 2\n1 3\n1 4\n2 3\n5 4\n",
+        "output": "3\n1 4 5\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1668",
+    "title": "Building Teams",
+    "url": "https://cses.fi/problemset/task/1668",
+    "difficulty": "medium",
+    "statement": "There are n pupils in Uolevi's class, and m friendships between them. Your task is to divide the pupils into two teams in such a way that no two pupils in a team are friends. You can freely choose the sizes of the teams.",
+    "input": "The first input line has two integers n and m: the number of pupils and friendships. The pupils are numbered 1,2,\\dots,n.\n\nThen, there are m lines describing the friendships. Each line has two integers a and b: pupils a and b are friends.\n\nEvery friendship is between two different pupils. You can assume that there is at most one friendship between any two pupils.",
+    "output": "Print an example of how to build the teams. For each pupil, print \"1\" or \"2\" depending on to which team the pupil will be assigned. You can print any valid team.\n\nIf there are no solutions, print \"IMPOSSIBLE\".",
+    "constraints": "• 1 \\le n \\le 10^5\n• 1 \\le m \\le 2 \\cdot 10^5\n• 1 \\le a,b \\le n",
+    "tests": [
+      {
+        "input": "5 3\n1 2\n1 3\n4 5\n",
+        "output": "1 2 2 1 2\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1669",
+    "title": "Round Trip",
+    "url": "https://cses.fi/problemset/task/1669",
+    "difficulty": "medium",
+    "statement": "Byteland has n cities and m roads between them. Your task is to design a round trip that begins in a city, goes through two or more other cities, and finally returns to the starting city. Every intermediate city on the route has to be distinct.",
+    "input": "The first input line has two integers n and m: the number of cities and roads. The cities are numbered 1,2,\\dots,n.\n\nThen, there are m lines describing the roads. Each line has two integers a and b: there is a road between those cities.\n\nEvery road is between two different cities, and there is at most one road between any two cities.",
+    "output": "First print an integer k: the number of cities on the route. Then print k cities in the order they will be visited. You can print any valid solution.\n\nIf there are no solutions, print \"IMPOSSIBLE\".",
+    "constraints": "• 1 \\le n \\le 10^5\n• 1 \\le m \\le 2 \\cdot 10^5\n• 1 \\le a,b \\le n",
+    "tests": [
+      {
+        "input": "5 6\n1 3\n1 2\n5 3\n1 5\n2 4\n4 5\n",
+        "output": "4\n3 5 1 3\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1671",
+    "title": "Shortest Routes I",
+    "url": "https://cses.fi/problemset/task/1671",
+    "difficulty": "medium",
+    "statement": "There are n cities and m flight connections between them. Your task is to determine the length of the shortest route from Syrjälä to every city.",
+    "input": "The first input line has two integers n and m: the number of cities and flight connections. The cities are numbered 1,2,\\dots,n, and city 1 is Syrjälä.\n\nAfter that, there are m lines describing the flight connections. Each line has three integers a, b and c: a flight begins at city a, ends at city b, and its length is c. Each flight is a one-way flight.\n\nYou can assume that it is possible to travel from Syrjälä to all other cities.",
+    "output": "Print n integers: the shortest route lengths from Syrjälä to cities 1,2,\\dots,n.",
+    "constraints": "• 1 \\le n \\le 10^5\n• 1 \\le m \\le 2 \\cdot 10^5\n• 1 \\le a,b \\le n\n• 1 \\le c \\le 10^9",
+    "tests": [
+      {
+        "input": "3 4\n1 2 6\n1 3 2\n3 2 3\n1 3 4\n",
+        "output": "0 5 2\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1672",
+    "title": "Shortest Routes II",
+    "url": "https://cses.fi/problemset/task/1672",
+    "difficulty": "medium",
+    "statement": "There are n cities and m roads between them. Your task is to process q queries where you have to determine the length of the shortest route between two given cities.",
+    "input": "The first input line has three integers n, m and q: the number of cities, roads, and queries.\n\nThen, there are m lines describing the roads. Each line has three integers a, b and c: there is a road between cities a and b whose length is c. All roads are two-way roads.\n\nFinally, there are q lines describing the queries. Each line has two integers a and b: determine the length of the shortest route between cities a and b.",
+    "output": "Print the length of the shortest route for each query. If there is no route, print -1 instead.",
+    "constraints": "• 1 \\le n \\le 500\n• 1 \\le m \\le n^2\n• 1 \\le q \\le 10^5\n• 1 \\le a,b \\le n\n• 1 \\le c \\le 10^9",
+    "tests": [
+      {
+        "input": "4 3 5\n1 2 5\n1 3 9\n2 3 3\n1 2\n2 1\n1 3\n1 4\n3 2\n",
+        "output": "5\n5\n8\n-1\n3\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1202",
+    "title": "Investigation",
+    "url": "https://cses.fi/problemset/task/1202",
+    "difficulty": "medium",
+    "statement": "You are going to travel from Syrjälä to Lehmälä by plane. You would like to find answers to the following questions:\n\n• what is the minimum price of such a route?\n• how many minimum-price routes are there? (modulo 10^9+7)\n• what is the minimum number of flights in a minimum-price route?\n• what is the maximum number of flights in a minimum-price route?",
+    "input": "The first input line contains two integers n and m: the number of cities and the number of flights. The cities are numbered 1,2,\\ldots,n. City 1 is Syrjälä, and city n is Lehmälä.\n\nAfter this, there are m lines describing the flights. Each line has three integers a, b, and c: there is a flight from city a to city b with price c. All flights are one-way flights.\n\nYou may assume that there is a route from Syrjälä to Lehmälä.",
+    "output": "Print four integers according to the problem statement.",
+    "constraints": "• 1 \\le n \\le 10^5\n• 1 \\le m \\le 2 \\cdot 10^5\n• 1 \\le a,b \\le n\n• 1 \\le c \\le 10^9",
+    "tests": [
+      {
+        "input": "4 5\n1 4 5\n1 2 4\n2 4 5\n1 3 2\n3 4 3\n",
+        "output": "5 2 1 2\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1750",
+    "title": "Planets Queries I",
+    "url": "https://cses.fi/problemset/task/1750",
+    "difficulty": "medium",
+    "statement": "You are playing a game consisting of n planets. Each planet has a teleporter to another planet (or the planet itself).\n\nYour task is to process q queries of the form: when you begin on planet x and travel through k teleporters, which planet will you reach?",
+    "input": "The first input line has two integers n and q: the number of planets and queries. The planets are numbered 1,2,\\dots,n.\n\nThe second line has n integers t_1,t_2,\\dots,t_n: for each planet, the destination of the teleporter. It is possible that t_i=i.\n\nFinally, there are q lines describing the queries. Each line has two integers x and k: you start on planet x and travel through k teleporters.",
+    "output": "Print the answer to each query.",
+    "constraints": "• 1 \\le n, q \\le 2 \\cdot 10^5\n• 1 \\le t_i \\le n\n• 1 \\le x \\le n\n• 0 \\le k \\le 10^9",
+    "tests": [
+      {
+        "input": "4 3\n2 1 1 4\n1 2\n3 4\n4 1\n",
+        "output": "1\n2\n4\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1674",
+    "title": "Subordinates",
+    "url": "https://cses.fi/problemset/task/1674",
+    "difficulty": "hard",
+    "statement": "Given the structure of a company, your task is to calculate for each employee the number of their subordinates.",
+    "input": "The first input line has an integer n: the number of employees. The employees are numbered 1,2,\\dots,n, and employee 1 is the general director of the company.\n\nAfter this, there are n-1 integers: for each employee 2,3,\\dots,n their direct boss in the company.",
+    "output": "Print n integers: for each employee 1,2,\\dots,n the number of their subordinates.",
+    "constraints": "• 1 \\le n \\le 2 \\cdot 10^5",
+    "tests": [
+      {
+        "input": "5\n1 1 2 3\n",
+        "output": "4 1 1 0 0\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1130",
+    "title": "Tree Matching",
+    "url": "https://cses.fi/problemset/task/1130",
+    "difficulty": "hard",
+    "statement": "You are given a tree consisting of n nodes.\n\nA matching is a set of edges where each node is an endpoint of at most one edge. What is the maximum number of edges in a matching?",
+    "input": "The first input line contains an integer n: the number of nodes. The nodes are numbered 1,2,\\ldots,n.\n\nThen there are n-1 lines describing the edges. Each line contains two integers a and b: there is an edge between nodes a and b.",
+    "output": "Print one integer: the maximum number of pairs.",
+    "constraints": "• 1 \\le n \\le 2 \\cdot 10^5\n• 1 \\le a,b \\le n",
+    "tests": [
+      {
+        "input": "5\n1 2\n1 3\n3 4\n3 5\n",
+        "output": "2\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1131",
+    "title": "Tree Diameter",
+    "url": "https://cses.fi/problemset/task/1131",
+    "difficulty": "hard",
+    "statement": "You are given a tree consisting of n nodes.\n\nThe diameter of a tree is the maximum distance between two nodes. Your task is to determine the diameter of the tree.",
+    "input": "The first input line contains an integer n: the number of nodes. The nodes are numbered 1,2,\\ldots,n.\n\nThen there are n-1 lines describing the edges. Each line contains two integers a and b: there is an edge between nodes a and b.",
+    "output": "Print one integer: the diameter of the tree.",
+    "constraints": "• 1 \\le n \\le 2 \\cdot 10^5\n• 1 \\le a,b \\le n",
+    "tests": [
+      {
+        "input": "5\n1 2\n1 3\n3 4\n3 5\n",
+        "output": "3\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1132",
+    "title": "Tree Distances I",
+    "url": "https://cses.fi/problemset/task/1132",
+    "difficulty": "hard",
+    "statement": "You are given a tree consisting of n nodes.\n\nYour task is to determine for each node the maximum distance to another node.",
+    "input": "The first input line contains an integer n: the number of nodes. The nodes are numbered 1,2,\\ldots,n.\n\nThen there are n-1 lines describing the edges. Each line contains two integers a and b: there is an edge between nodes a and b.",
+    "output": "Print n integers: for each node 1,2,\\ldots,n, the maximum distance to another node.",
+    "constraints": "• 1 \\le n \\le 2 \\cdot 10^5\n• 1 \\le a,b \\le n",
+    "tests": [
+      {
+        "input": "5\n1 2\n1 3\n3 4\n3 5\n",
+        "output": "2 3 2 3 3\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1133",
+    "title": "Tree Distances II",
+    "url": "https://cses.fi/problemset/task/1133",
+    "difficulty": "hard",
+    "statement": "You are given a tree consisting of n nodes.\n\nYour task is to determine for each node the sum of the distances from the node to all other nodes.",
+    "input": "The first input line contains an integer n: the number of nodes. The nodes are numbered 1,2,\\ldots,n.\n\nThen there are n-1 lines describing the edges. Each line contains two integers a and b: there is an edge between nodes a and b.",
+    "output": "Print n integers: for each node 1,2,\\ldots,n, the sum of the distances.",
+    "constraints": "• 1 \\le n \\le 2 \\cdot 10^5\n• 1 \\le a,b \\le n",
+    "tests": [
+      {
+        "input": "5\n1 2\n1 3\n3 4\n3 5\n",
+        "output": "6 9 5 8 8\n"
+      }
+    ]
+  },
+  {
+    "id": "cses-1688",
+    "title": "Company Queries II",
+    "url": "https://cses.fi/problemset/task/1688",
+    "difficulty": "hard",
+    "statement": "A company has n employees, who form a tree hierarchy where each employee has a boss, except for the general director.\n\nYour task is to process q queries of the form: who is the lowest common boss of employees a and b in the hierarchy?",
+    "input": "The first input line has two integers n and q: the number of employees and queries. The employees are numbered 1,2,\\dots,n, and employee 1 is the general director.\n\nThe next line has n-1 integers e_2,e_3,\\dots,e_n: for each employee 2,3,\\dots,n their boss.\n\nFinally, there are q lines describing the queries. Each line has two integers a and b: who is the lowest common boss of employees a and b?",
+    "output": "Print the answer for each query.",
+    "constraints": "• 1 \\le n,q \\le 2 \\cdot 10^5\n• 1 \\le e_i \\le i-1\n• 1 \\le a,b \\le n",
+    "tests": [
+      {
+        "input": "5 3\n1 1 3 3\n4 5\n2 5\n1 4\n",
+        "output": "3\n1\n1\n"
+      }
+    ]
+  }
+]

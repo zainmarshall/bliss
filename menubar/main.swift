@@ -32,19 +32,21 @@ final class BlissStatusBar {
 
     @objc private func openDashboard() {
         let ws = NSWorkspace.shared
+        // Try to activate an already-running instance first
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: "com.bliss.gui") {
+            app.activate()
+            return
+        }
+        // Otherwise launch from known paths (/Applications first)
         let candidateApps = [
-            "/Users/zain/Developer/bliss/gui/build/BlissGUI.app",
             "/Applications/BlissGUI.app",
-            "/Applications/Bliss.app"
         ]
         for path in candidateApps {
             if FileManager.default.fileExists(atPath: path) {
-                ws.open(URL(fileURLWithPath: path))
+                let url = URL(fileURLWithPath: path)
+                ws.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
                 return
             }
-        }
-        if let appURL = ws.urlForApplication(withBundleIdentifier: "com.bliss.gui") {
-            ws.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
         }
     }
 

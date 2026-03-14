@@ -18,7 +18,7 @@ https://github.com/user-attachments/assets/2810f783-6585-4e67-8919-b054ea23d219
 1. Download and run the release installer:
   ```bash
 curl -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" \
-  "https://github.com/zainmarshall/bliss/releases/download/v0.2.0/bliss-macos-universal.zip?cachebust=$(date +%s)" \
+  "https://github.com/zainmarshall/bliss/releases/download/v0.3.0/bliss-macos-universal.zip?cachebust=$(date +%s)" \
   -o /tmp/bliss.zip && \
   rm -rf /tmp/bliss && mkdir -p /tmp/bliss && \
   unzip -q /tmp/bliss.zip -d /tmp/bliss && \

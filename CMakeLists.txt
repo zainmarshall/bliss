@@ -21,3 +21,14 @@ add_executable(blissroot
     src/hosts_block.cpp
     src/firewall_block.cpp
 )
+
+# Tests
+enable_testing()
+
+add_executable(test_hosts_block
+    tests/test_hosts_block.cpp
+    src/hosts_block.cpp
+    src/firewall_block.cpp
+)
+
+add_test(NAME hosts_block COMMAND test_hosts_block)

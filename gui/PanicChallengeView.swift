@@ -3,7 +3,7 @@ import SwiftUI
 struct PanicChallengeView: View {
     let quote: String
     let mode: PanicModeSetting
-    let cfDifficulty: CFPanicDifficulty
+    let cpDifficulty: CPDifficulty
     let onSuccess: () async -> Bool
 
     @Environment(\.dismiss) private var dismiss
@@ -14,29 +14,34 @@ struct PanicChallengeView: View {
     @State private var commandError: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Panic Challenge")
-                .font(.title2.weight(.semibold))
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Panic Challenge")
+                    .font(.title2.weight(.semibold))
+                Spacer()
+                Button("Cancel") { dismiss() }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 10)
+
+            Divider()
 
             if mode == .typing {
                 typingView
+                    .padding(20)
             } else {
-                CodeforcesPanicView(difficulty: cfDifficulty, onUnlock: {
+                CompetitivePanicView(difficulty: cpDifficulty, onUnlock: {
                     let ok = await onSuccess()
                     if ok {
                         dismiss()
                     }
                     return ok
                 })
-            }
-
-            HStack {
-                Button("Cancel") { dismiss() }
-                Spacer()
+                .padding(20)
             }
         }
-        .padding(20)
-        .frame(minWidth: 760, idealWidth: 840, maxWidth: 900, minHeight: 520, idealHeight: 600, maxHeight: 640)
+        .frame(minWidth: 760, idealWidth: 860, maxWidth: 920, minHeight: 560, idealHeight: 700, maxHeight: .infinity)
         .onAppear { isInputFocused = true }
     }
 
@@ -74,7 +79,7 @@ struct PanicChallengeView: View {
                 .foregroundColor(.clear)
                 .accentColor(.clear)
                 .focused($isInputFocused)
-                .onChange(of: typed) { _, newValue in
+                .onChange(of: typed) { newValue in
                     typed = sanitize(newValue)
                 }
                 .frame(height: 1)

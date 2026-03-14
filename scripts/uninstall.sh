@@ -8,6 +8,10 @@ if [[ -n "${SUDO_USER:-}" ]]; then
 fi
 sudo /bin/launchctl bootout system/com.bliss.root 2>/dev/null || true
 
+# Kill running GUI and menubar processes
+/usr/bin/killall BlissGUI 2>/dev/null || true
+/usr/bin/killall blissbar 2>/dev/null || true
+
 sudo rm -f /usr/local/bin/bliss /usr/local/bin/blissd
 sudo rm -f /usr/local/bin/blissroot
 sudo rm -f /Library/LaunchDaemons/com.bliss.timer.plist

@@ -2,10 +2,10 @@ import Foundation
 
 enum PanicModeSetting: String, CaseIterable {
     case typing = "typing"
-    case codeforces = "codeforces"
+    case competitive = "competitive"
 }
 
-enum CFPanicDifficulty: String, CaseIterable {
+enum CPDifficulty: String, CaseIterable {
     case easy = "easy"
     case medium = "medium"
     case hard = "hard"
@@ -32,7 +32,7 @@ final class BlissViewModel: ObservableObject {
     @Published var websiteInput = ""
     @Published var quoteLength = "medium"
     @Published var panicMode: PanicModeSetting = .typing
-    @Published var cfDifficulty: CFPanicDifficulty = .easy
+    @Published var cpDifficulty: CPDifficulty = .easy
     @Published var output = ""
     @Published var errorMessage: String?
     @Published var panicPresented = false
@@ -69,7 +69,7 @@ final class BlissViewModel: ObservableObject {
     func refreshAll() {
         syncQuoteLengthFromConfig()
         syncPanicModeFromConfig()
-        syncCFDifficultyFromConfig()
+        syncCPDifficultyFromConfig()
         Task {
             await refreshStatusAsync()
             if isSessionActive {
@@ -79,6 +79,21 @@ final class BlissViewModel: ObservableObject {
             await refreshAppsAsync()
             await refreshBrowsersAsync()
         }
+    }
+
+    var isSetupComplete: Bool {
+        let path = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss/setup_complete").path
+        return FileManager.default.fileExists(atPath: path)
+    }
+
+    func completeSetup() {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss/setup_complete")
+        try? "1\n".data(using: .utf8)?.write(to: url)
     }
 
     func setManualError(_ message: String) {
@@ -97,6 +112,15 @@ final class BlissViewModel: ObservableObject {
             guard let self else { return }
             self.websiteInput = ""
             self.refreshWebsites()
+        }
+    }
+
+    func addWebsite(domain: String) {
+        guard !isSessionActive else { return }
+        let trimmed = domain.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        runAction(["config", "website", "add", trimmed], successRefresh: false) { [weak self] in
+            self?.refreshWebsites()
         }
     }
 
@@ -161,10 +185,10 @@ final class BlissViewModel: ObservableObject {
         savePanicModeToConfig()
     }
 
-    func setCFDifficulty(_ difficulty: CFPanicDifficulty) {
+    func setCPDifficulty(_ difficulty: CPDifficulty) {
         guard !isSessionActive else { return }
-        cfDifficulty = difficulty
-        saveCFDifficultyToConfig()
+        cpDifficulty = difficulty
+        saveCPDifficultyToConfig()
     }
 
     func panicFromGUI() async -> Bool {
@@ -180,14 +204,17 @@ final class BlissViewModel: ObservableObject {
     }
 
     func randomQuote() -> String {
-        let preferred = URL(fileURLWithPath: "/usr/local/share/bliss/quotes/\(quoteLength).txt")
-        if let loaded = loadRandomLine(from: preferred) {
-            return loaded
-        }
-        let local = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-            .appendingPathComponent("quotes/\(quoteLength).txt")
-        if let loaded = loadRandomLine(from: local) {
-            return loaded
+        let bundleQuotes = Bundle.main.bundlePath + "/Contents/Resources/quotes/\(quoteLength).txt"
+        let candidates = [
+            bundleQuotes,
+            "/usr/local/share/bliss/quotes/\(quoteLength).txt",
+            "/Users/zain/Developer/bliss/quotes/\(quoteLength).txt",
+            FileManager.default.currentDirectoryPath + "/quotes/\(quoteLength).txt",
+        ]
+        for path in candidates {
+            if let loaded = loadRandomLine(from: URL(fileURLWithPath: path)) {
+                return loaded
+            }
         }
         return "Focus is a practice, not a mood."
     }
@@ -229,7 +256,8 @@ final class BlissViewModel: ObservableObject {
             panicMode = .typing
             return
         }
-        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        var value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if value == "codeforces" { value = "competitive" }
         panicMode = PanicModeSetting(rawValue: value) ?? .typing
     }
 
@@ -246,25 +274,25 @@ final class BlissViewModel: ObservableObject {
             .appendingPathComponent(".config/bliss/panic_mode.txt")
     }
 
-    private func syncCFDifficultyFromConfig() {
-        let url = cfDifficultyConfigURL()
+    private func syncCPDifficultyFromConfig() {
+        let url = cpDifficultyConfigURL()
         guard let raw = try? String(contentsOf: url, encoding: .utf8) else {
-            cfDifficulty = .easy
+            cpDifficulty = .easy
             return
         }
         let value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        cfDifficulty = CFPanicDifficulty(rawValue: value) ?? .easy
+        cpDifficulty = CPDifficulty(rawValue: value) ?? .easy
     }
 
-    private func saveCFDifficultyToConfig() {
+    private func saveCPDifficultyToConfig() {
         let dir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".config/bliss", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = cfDifficultyConfigURL()
-        try? (cfDifficulty.rawValue + "\n").data(using: .utf8)?.write(to: url)
+        let url = cpDifficultyConfigURL()
+        try? (cpDifficulty.rawValue + "\n").data(using: .utf8)?.write(to: url)
     }
 
-    private func cfDifficultyConfigURL() -> URL {
+    private func cpDifficultyConfigURL() -> URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".config/bliss/panic_difficulty.txt")
     }
@@ -409,10 +437,10 @@ final class BlissViewModel: ObservableObject {
             return "Bliss CLI not found at \(BlissCommand.executablePath()). Install or build Bliss first."
         }
         if output.contains("unable to reach bliss root helper") {
-            return "Root helper is unavailable. Run: sudo bliss repair"
+            return "Root helper is unavailable. Run in Terminal: sudo \(BlissCommand.executablePath()) repair"
         }
         if output.contains("repair requires sudo") {
-            return "This needs elevated permission. Run from Terminal with sudo."
+            return "This needs elevated permission. Run in Terminal: sudo \(BlissCommand.executablePath()) repair"
         }
         if output.contains("config is locked while a session is active") {
             return lockMessage()
@@ -442,5 +470,50 @@ final class BlissViewModel: ObservableObject {
 
     private func refreshBrowsers() {
         Task { await refreshBrowsersAsync() }
+    }
+
+    func runUninstall() {
+        Task {
+            let scriptPaths = [
+                "/usr/local/share/bliss/uninstall.sh",
+                URL(fileURLWithPath: BlissCommand.executablePath())
+                    .deletingLastPathComponent()
+                    .deletingLastPathComponent()
+                    .appendingPathComponent("scripts/uninstall.sh").path
+            ]
+            for path in scriptPaths {
+                if FileManager.default.fileExists(atPath: path) {
+                    let result = await Task.detached {
+                        let process = Process()
+                        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                        process.arguments = [
+                            "-e",
+                            "do shell script \"/bin/bash '\(path)'\" with administrator privileges"
+                        ]
+                        let outPipe = Pipe()
+                        let errPipe = Pipe()
+                        process.standardOutput = outPipe
+                        process.standardError = errPipe
+                        do {
+                            try process.run()
+                            process.waitUntilExit()
+                        } catch {
+                            return CommandResult(code: 127, stdout: "", stderr: error.localizedDescription)
+                        }
+                        let out = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                        let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                        return CommandResult(code: process.terminationStatus, stdout: out, stderr: err)
+                    }.value
+                    if result.code == 0 {
+                        errorMessage = nil
+                        output = "Uninstall complete."
+                    } else {
+                        errorMessage = "Uninstall failed: \(result.combinedOutput)"
+                    }
+                    return
+                }
+            }
+            errorMessage = "Uninstall script not found."
+        }
     }
 }

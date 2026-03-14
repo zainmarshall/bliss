@@ -35,7 +35,10 @@ sudo cp "${ROOT_DIR}/scripts/uninstall.sh" /usr/local/share/bliss/uninstall.sh
 sudo chmod 755 /usr/local/share/bliss/uninstall.sh
 
 echo "[bliss] install: gui"
-mkdir -p "${GUI_APP_MACOS}" "${GUI_APP_RESOURCES}"
+mkdir -p "${GUI_APP_MACOS}" "${GUI_APP_RESOURCES}/problems" "${GUI_APP_RESOURCES}/quotes"
+cp -f "${ROOT_DIR}/problems/"*.json "${GUI_APP_RESOURCES}/problems/" 2>/dev/null || true
+cp -f "${ROOT_DIR}/quotes/"*.txt "${GUI_APP_RESOURCES}/quotes/" 2>/dev/null || true
+cp -f "${ROOT_DIR}/gui/AppIcon.icns" "${GUI_APP_RESOURCES}/AppIcon.icns" 2>/dev/null || true
 /usr/bin/swiftc -parse-as-library -module-cache-path /tmp/bliss_module_cache -framework SwiftUI -framework AppKit "${ROOT_DIR}/gui/"*.swift -o "${GUI_APP_BIN}"
 cat > "${GUI_INFO_PLIST}" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -55,13 +58,26 @@ cat > "${GUI_INFO_PLIST}" <<'PLIST'
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1</string>
+  <string>0.3.0</string>
   <key>CFBundleVersion</key>
   <string>1</string>
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>com.bliss.gui</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>bliss</string>
+      </array>
+    </dict>
+  </array>
 </dict>
 </plist>
 PLIST
@@ -71,9 +87,9 @@ sudo /usr/bin/codesign --force --sign - /Applications/BlissGUI.app >/dev/null 2>
 
 echo "[bliss] install: problems"
 sudo mkdir -p /usr/local/share/bliss/problems
-if [[ -f "${ROOT_DIR}/problems/codeforces.json" ]]; then
-  sudo cp "${ROOT_DIR}/problems/codeforces.json" /usr/local/share/bliss/problems/codeforces.json
-fi
+for f in "${ROOT_DIR}/problems/"*.json; do
+  [[ -f "$f" ]] && sudo cp "$f" /usr/local/share/bliss/problems/
+done
 
 echo "[bliss] install: menubar"
 bash "${ROOT_DIR}/scripts/install_menubar.sh"

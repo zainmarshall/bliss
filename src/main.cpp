@@ -33,7 +33,7 @@ static const char* kRootHelperPlistBackupPath = "/usr/local/share/bliss/com.blis
 static void print_usage(){
     std::cout
         << "bliss start <minutes>           Start a focus lock for N minutes\n"
-        << "bliss panic                     Early exit (typing challenge)\n"
+        << "bliss panic                     Early exit (typing or competitive challenge)\n"
         << "bliss status                    Show remaining time + firewall state\n"
         << "bliss repair                    Repair root helper + clear state (requires sudo)\n"
         << "bliss uninstall                 Remove Bliss (requires puzzle)\n"
@@ -188,6 +188,42 @@ static bool typing_test(double& out_accuracy){
 static bool file_exists(const char* path){
     struct stat st{};
     return stat(path, &st) == 0;
+}
+
+static std::string read_panic_mode(){
+    std::string config_dir;
+    const char* home = getenv("HOME");
+    if(!home) return "typing";
+    config_dir = std::string(home) + "/.config/bliss/panic_mode.txt";
+    std::ifstream in(config_dir);
+    if(!in.is_open()) return "typing";
+    std::string line;
+    if(!std::getline(in, line)) return "typing";
+    // Trim whitespace
+    while(!line.empty() && (line.back() == '\n' || line.back() == '\r' || line.back() == ' '))
+        line.pop_back();
+    if(line == "competitive" || line == "codeforces") return "competitive";
+    return "typing";
+}
+
+static bool open_bliss_gui(){
+    // Try URL scheme first — activates running app and navigates to panic tab
+    if(std::system("/usr/bin/open \"bliss://panic\" 2>/dev/null") == 0){
+        return true;
+    }
+    // Fallback: open app bundle directly
+    const char* gui_paths[] = {
+        "/Applications/BlissGUI.app",
+        "/Users/zain/Developer/bliss/gui/build/BlissGUI.app",
+    };
+    for(const char* p : gui_paths){
+        if(file_exists(p)){
+            std::string cmd = "/usr/bin/open \"" + std::string(p) + "\"";
+            std::system(cmd.c_str());
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool send_to_root_helper(const std::string& line);
@@ -992,13 +1028,33 @@ int main(int argc, char* argv[]){
         }
         bool skip_challenge = (argc >= 3 && std::string(argv[2]) == "--skip-challenge");
         if(!skip_challenge){
-            double accuracy = 0.0;
-            if(!typing_test(accuracy)){
-                std::cout << "puzzle failed (still blocked)\n";
+            std::string panic_mode = read_panic_mode();
+            if(panic_mode == "competitive"){
+                std::cout << "panic mode is set to competitive programming\n";
+                std::cout << "opening Bliss GUI for the challenge...\n";
+                if(!open_bliss_gui()){
+                    std::cout << "[error] could not find BlissGUI.app\n";
+                    std::cout << "falling back to typing challenge\n";
+                    double accuracy = 0.0;
+                    if(!typing_test(accuracy)){
+                        std::cout << "puzzle failed (still blocked)\n";
+                        std::cout << "target: 95%, actual: " << static_cast<int>(accuracy + 0.5) << "%\n";
+                        return 1;
+                    }
+                    std::cout << "target: 95%, actual: " << static_cast<int>(accuracy + 0.5) << "%\n";
+                } else {
+                    std::cout << "complete the challenge in the GUI to unlock\n";
+                    return 0;
+                }
+            } else {
+                double accuracy = 0.0;
+                if(!typing_test(accuracy)){
+                    std::cout << "puzzle failed (still blocked)\n";
+                    std::cout << "target: 95%, actual: " << static_cast<int>(accuracy + 0.5) << "%\n";
+                    return 1;
+                }
                 std::cout << "target: 95%, actual: " << static_cast<int>(accuracy + 0.5) << "%\n";
-                return 1;
             }
-            std::cout << "target: 95%, actual: " << static_cast<int>(accuracy + 0.5) << "%\n";
         }
         if(!is_root){
             if(!send_to_root_helper("panic")){

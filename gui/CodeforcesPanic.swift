@@ -1,12 +1,12 @@
-    import Foundation
+import Foundation
 import SwiftUI
 
-struct CFPanicTestCase: Codable {
+struct CPPanicTestCase: Codable {
     let input: String
     let output: String
 }
 
-struct CFPanicProblem: Codable, Identifiable {
+struct CPPanicProblem: Codable, Identifiable {
     let id: String
     let title: String
     let statement: String
@@ -14,10 +14,11 @@ struct CFPanicProblem: Codable, Identifiable {
     let difficulty: String
     let input: String?
     let output: String?
-    let tests: [CFPanicTestCase]
+    let constraints: String?
+    let tests: [CPPanicTestCase]
 }
 
-struct CFPanicLanguage: Codable, Identifiable, Hashable {
+struct CPPanicLanguage: Codable, Identifiable, Hashable {
     let id: String
     let displayName: String
     let sourceFile: String
@@ -26,26 +27,155 @@ struct CFPanicLanguage: Codable, Identifiable, Hashable {
     let mainClass: String?
 }
 
-struct CFPanicLanguageFile: Codable {
-    let languages: [CFPanicLanguage]
+struct CPPanicLanguageFile: Codable {
+    let languages: [CPPanicLanguage]
 }
 
-struct CFPanicJudgeResult {
+struct CPPanicJudgeResult {
     let passed: Bool
     let summary: String
 }
 
-struct CFPanicProcessResult {
+struct CPPanicProcessResult {
     let exitCode: Int32
     let stdout: String
     let stderr: String
     let timedOut: Bool
 }
 
-enum CFPanicData {
-    static func defaultLanguages() -> [CFPanicLanguage] {
+// LaTex Render (it is prounced latex like the thing is gloves not lay-tec, fight me)
+
+enum MathRenderer {
+    static func render(_ text: String) -> String {
+        var result = text
+        let subscriptMap: [Character: Character] = [
+            "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄",
+            "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉",
+            "i": "ᵢ", "j": "ⱼ", "n": "ₙ", "k": "ₖ",
+        ]
+        let superscriptMap: [Character: Character] = [
+            "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
+            "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
+            "n": "ⁿ", "i": "ⁱ",
+        ]
+
+        // bracess subscripts: _{...}
+        result = result.replacingOccurrences(
+            of: #"_\{([^}]+)\}"#,
+            with: "",
+            options: .regularExpression
+        )
+        //add supers 
+        if let regex = try? NSRegularExpression(pattern: #"_\{([^}]+)\}"#) {
+            var working = text
+            let nsRange = NSRange(working.startIndex..., in: working)
+            let matches = regex.matches(in: working, range: nsRange)
+            for match in matches.reversed() {
+                guard let contentRange = Range(match.range(at: 1), in: working),
+                      let fullRange = Range(match.range, in: working) else { continue }
+                let content = String(working[contentRange])
+                let converted = content.map { subscriptMap[$0].map(String.init) ?? String($0) }.joined()
+                working.replaceSubrange(fullRange, with: converted)
+            }
+            result = working
+        }
+
+        // supss
+        if let regex = try? NSRegularExpression(pattern: #"_([0-9a-z])"#) {
+            let nsRange = NSRange(result.startIndex..., in: result)
+            let matches = regex.matches(in: result, range: nsRange)
+            for match in matches.reversed() {
+                guard let charRange = Range(match.range(at: 1), in: result),
+                      let fullRange = Range(match.range, in: result) else { continue }
+                let ch = result[charRange].first!
+                let replacement = subscriptMap[ch].map(String.init) ?? "_\(ch)"
+                result.replaceSubrange(fullRange, with: replacement)
+            }
+        }
+
+        // sups
+        if let regex = try? NSRegularExpression(pattern: #"\^\{([^}]+)\}"#) {
+            let nsRange = NSRange(result.startIndex..., in: result)
+            let matches = regex.matches(in: result, range: nsRange)
+            for match in matches.reversed() {
+                guard let contentRange = Range(match.range(at: 1), in: result),
+                      let fullRange = Range(match.range, in: result) else { continue }
+                let content = String(result[contentRange])
+                let converted = content.map { superscriptMap[$0].map(String.init) ?? String($0) }.joined()
+                result.replaceSubrange(fullRange, with: converted)
+            }
+        }
+        if let regex = try? NSRegularExpression(pattern: #"\^([0-9a-z])"#) {
+            let nsRange = NSRange(result.startIndex..., in: result)
+            let matches = regex.matches(in: result, range: nsRange)
+            for match in matches.reversed() {
+                guard let charRange = Range(match.range(at: 1), in: result),
+                      let fullRange = Range(match.range, in: result) else { continue }
+                let ch = result[charRange].first!
+                let replacement = superscriptMap[ch].map(String.init) ?? "^\(ch)"
+                result.replaceSubrange(fullRange, with: replacement)
+            }
+        }
+
+        // latex sybols
+        result = result.replacingOccurrences(of: "\\le ", with: "≤ ")
+        result = result.replacingOccurrences(of: "\\le\n", with: "≤\n")
+        result = result.replacingOccurrences(of: "\\ge ", with: "≥ ")
+        result = result.replacingOccurrences(of: "\\ge\n", with: "≥\n")
+        result = result.replacingOccurrences(of: "\\leq ", with: "≤ ")
+        result = result.replacingOccurrences(of: "\\geq ", with: "≥ ")
+        result = result.replacingOccurrences(of: "\\ne ", with: "≠ ")
+        result = result.replacingOccurrences(of: "\\neq ", with: "≠ ")
+        result = result.replacingOccurrences(of: "\\dots", with: "…")
+        result = result.replacingOccurrences(of: "\\ldots", with: "…")
+        result = result.replacingOccurrences(of: "\\cdot ", with: "· ")
+        result = result.replacingOccurrences(of: "\\cdots", with: "⋯")
+        result = result.replacingOccurrences(of: "\\times ", with: "× ")
+        result = result.replacingOccurrences(of: "\\infty", with: "∞")
+        result = result.replacingOccurrences(of: "\\sum", with: "∑")
+        result = result.replacingOccurrences(of: "\\prod", with: "∏")
+        result = result.replacingOccurrences(of: "\\sqrt", with: "√")
+        result = result.replacingOccurrences(of: "\\pm ", with: "± ")
+        result = result.replacingOccurrences(of: "\\in ", with: "∈ ")
+        result = result.replacingOccurrences(of: "\\notin ", with: "∉ ")
+        result = result.replacingOccurrences(of: "\\subset ", with: "⊂ ")
+        result = result.replacingOccurrences(of: "\\subseteq ", with: "⊆ ")
+        result = result.replacingOccurrences(of: "\\cup ", with: "∪ ")
+        result = result.replacingOccurrences(of: "\\cap ", with: "∩ ")
+        result = result.replacingOccurrences(of: "\\forall ", with: "∀ ")
+        result = result.replacingOccurrences(of: "\\exists ", with: "∃ ")
+        result = result.replacingOccurrences(of: "\\rightarrow ", with: "→ ")
+        result = result.replacingOccurrences(of: "\\leftarrow ", with: "← ")
+        result = result.replacingOccurrences(of: "\\lfloor ", with: "⌊")
+        result = result.replacingOccurrences(of: "\\rfloor ", with: "⌋")
+        result = result.replacingOccurrences(of: "\\lceil ", with: "⌈")
+        result = result.replacingOccurrences(of: "\\rceil ", with: "⌉")
+        result = result.replacingOccurrences(of: "\\bmod ", with: " mod ")
+        result = result.replacingOccurrences(of: "\\mod ", with: " mod ")
+        result = result.replacingOccurrences(of: "\\log ", with: "log ")
+        result = result.replacingOccurrences(of: "\\min ", with: "min ")
+        result = result.replacingOccurrences(of: "\\max ", with: "max ")
+        result = result.replacingOccurrences(of: "\\gcd ", with: "gcd ")
+
+        // Remove remaining \text{...} wrappers
+        if let regex = try? NSRegularExpression(pattern: #"\\text\{([^}]*)\}"#) {
+            let nsRange = NSRange(result.startIndex..., in: result)
+            result = regex.stringByReplacingMatches(in: result, range: nsRange, withTemplate: "$1")
+        }
+        // Remove remaining \mathrm{...} etc
+        if let regex = try? NSRegularExpression(pattern: #"\\(?:mathrm|mathit|mathbf)\{([^}]*)\}"#) {
+            let nsRange = NSRange(result.startIndex..., in: result)
+            result = regex.stringByReplacingMatches(in: result, range: nsRange, withTemplate: "$1")
+        }
+
+        return result
+    }
+}
+
+enum CPPanicData {
+    static func defaultLanguages() -> [CPPanicLanguage] {
         [
-            CFPanicLanguage(
+            CPPanicLanguage(
                 id: "cpp17",
                 displayName: "C++17 (clang++)",
                 sourceFile: "main.cpp",
@@ -53,7 +183,7 @@ enum CFPanicData {
                 run: ["{exe}"],
                 mainClass: nil
             ),
-            CFPanicLanguage(
+            CPPanicLanguage(
                 id: "python3",
                 displayName: "Python 3",
                 sourceFile: "solution.py",
@@ -61,32 +191,41 @@ enum CFPanicData {
                 run: ["python3", "{source}"],
                 mainClass: nil
             ),
-            CFPanicLanguage(
+            CPPanicLanguage(
                 id: "java17",
                 displayName: "Java 17",
                 sourceFile: "Main.java",
                 compile: ["javac", "{source}"],
                 run: ["java", "-cp", ".", "{main_class}"],
                 mainClass: "Main"
+            ),
+            //holy tuff insane aura langauge who made this tuff ahh insane super cool auraful language?!
+            CPPanicLanguage(
+                id: "zenpp",
+                displayName: "Zen++",
+                sourceFile: "solution.zpp",
+                compile: nil,
+                run: ["/usr/local/bin/zenpp", "{source}"],
+                mainClass: nil
             )
         ]
     }
 
-    static func loadLanguages() -> [CFPanicLanguage] {
+    static func loadLanguages() -> [CPPanicLanguage] {
         let path = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".config/bliss/panic_languages.json")
         guard let data = try? Data(contentsOf: path),
-              let loaded = try? JSONDecoder().decode(CFPanicLanguageFile.self, from: data),
+              let loaded = try? JSONDecoder().decode(CPPanicLanguageFile.self, from: data),
               !loaded.languages.isEmpty else {
             return defaultLanguages()
         }
         return loaded.languages
     }
 
-    static func loadProblems() -> [CFPanicProblem] {
+    static func loadProblems() -> [CPPanicProblem] {
         for url in candidateProblemPaths() {
             guard let data = try? Data(contentsOf: url),
-                  let loaded = try? JSONDecoder().decode([CFPanicProblem].self, from: data),
+                  let loaded = try? JSONDecoder().decode([CPPanicProblem].self, from: data),
                   !loaded.isEmpty else {
                 continue
             }
@@ -96,30 +235,58 @@ enum CFPanicData {
     }
 
     private static func candidateProblemPaths() -> [URL] {
+        let fileName = "problems.json"
         var out: [URL] = []
+
+        // Env var override
+        if let env = ProcessInfo.processInfo.environment["BLISS_PROBLEMS"], !env.isEmpty {
+            out.append(URL(fileURLWithPath: env))
+        }
+        // Legacy env var
         if let env = ProcessInfo.processInfo.environment["BLISS_CF_PROBLEMS"], !env.isEmpty {
             out.append(URL(fileURLWithPath: env))
         }
+
+        // Installed location
+        out.append(URL(fileURLWithPath: "/usr/local/share/bliss/problems/\(fileName)"))
         out.append(URL(fileURLWithPath: "/usr/local/share/bliss/problems/codeforces.json"))
-        out.append(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/bliss/problems/codeforces.json"))
+
+        // User config
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        out.append(home.appendingPathComponent(".config/bliss/problems/\(fileName)"))
+        out.append(home.appendingPathComponent(".config/bliss/problems/codeforces.json"))
+
+        // Current working directory fallback
+        out.append(URL(fileURLWithPath: "problems/\(fileName)"))
+        out.append(URL(fileURLWithPath: "problems/codeforces.json"))
+
+        // Bundle-relative (3 levels up from executable inside .app bundle)
         let bundleRoot = URL(fileURLWithPath: Bundle.main.bundlePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
+        out.append(bundleRoot.appendingPathComponent("problems/\(fileName)"))
         out.append(bundleRoot.appendingPathComponent("problems/codeforces.json"))
-        out.append(URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("problems/codeforces.json"))
+
+        // CWD
+        let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        out.append(cwd.appendingPathComponent("problems/\(fileName)"))
+        out.append(cwd.appendingPathComponent("problems/codeforces.json"))
+
         return out
     }
 }
 
-enum CFPanicJudge {
-    static func run(problem: CFPanicProblem, language: CFPanicLanguage, sourceCode: String) -> CFPanicJudgeResult {
+// judge 
+
+enum CPPanicJudge {
+    static func run(problem: CPPanicProblem, language: CPPanicLanguage, sourceCode: String) -> CPPanicJudgeResult {
         let fm = FileManager.default
-        let tempDir = fm.temporaryDirectory.appendingPathComponent("bliss_cf_\(UUID().uuidString)")
+        let tempDir = fm.temporaryDirectory.appendingPathComponent("bliss_cp_\(UUID().uuidString)")
         do {
             try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
         } catch {
-            return CFPanicJudgeResult(passed: false, summary: "Failed to create temp dir: \(error.localizedDescription)")
+            return CPPanicJudgeResult(passed: false, summary: "Failed to create temp dir: \(error.localizedDescription)")
         }
         defer { try? fm.removeItem(at: tempDir) }
 
@@ -127,7 +294,7 @@ enum CFPanicJudge {
         do {
             try sourceCode.data(using: .utf8)?.write(to: sourceURL)
         } catch {
-            return CFPanicJudgeResult(passed: false, summary: "Failed to write source: \(error.localizedDescription)")
+            return CPPanicJudgeResult(passed: false, summary: "Failed to write source: \(error.localizedDescription)")
         }
 
         let executableURL = tempDir.appendingPathComponent("solution_bin")
@@ -146,11 +313,11 @@ enum CFPanicJudge {
                 timeoutSeconds: 10
             )
             if compileResult.timedOut {
-                return CFPanicJudgeResult(passed: false, summary: "Compilation timed out.")
+                return CPPanicJudgeResult(passed: false, summary: "Compilation timed out.")
             }
             if compileResult.exitCode != 0 {
                 let message = compileResult.stderr.isEmpty ? compileResult.stdout : compileResult.stderr
-                return CFPanicJudgeResult(passed: false, summary: "Compile failed:\n\(truncate(message, limit: 1000))")
+                return CPPanicJudgeResult(passed: false, summary: "Compile failed:\n\(truncate(message, limit: 1000))")
             }
         }
 
@@ -161,7 +328,7 @@ enum CFPanicJudge {
             mainClass: language.mainClass ?? "Main"
         )
         guard let executable = runArgs.first else {
-            return CFPanicJudgeResult(passed: false, summary: "Invalid run command.")
+            return CPPanicJudgeResult(passed: false, summary: "Invalid run command.")
         }
 
         for (index, test) in problem.tests.enumerated() {
@@ -173,14 +340,14 @@ enum CFPanicJudge {
                 timeoutSeconds: 4
             )
             if result.timedOut {
-                return CFPanicJudgeResult(
+                return CPPanicJudgeResult(
                     passed: false,
                     summary: "Test \(index + 1) timed out."
                 )
             }
             if result.exitCode != 0 {
                 let error = result.stderr.isEmpty ? result.stdout : result.stderr
-                return CFPanicJudgeResult(
+                return CPPanicJudgeResult(
                     passed: false,
                     summary: "Runtime error on test \(index + 1):\n\(truncate(error, limit: 1000))"
                 )
@@ -188,7 +355,7 @@ enum CFPanicJudge {
             let actual = normalize(result.stdout)
             let expected = normalize(test.output)
             if actual != expected {
-                return CFPanicJudgeResult(
+                return CPPanicJudgeResult(
                     passed: false,
                     summary: """
                     Wrong answer on test \(index + 1)
@@ -201,7 +368,7 @@ enum CFPanicJudge {
             }
         }
 
-        return CFPanicJudgeResult(passed: true, summary: "All tests passed (\(problem.tests.count)/\(problem.tests.count)).")
+        return CPPanicJudgeResult(passed: true, summary: "All tests passed (\(problem.tests.count)/\(problem.tests.count)).")
     }
 
     private static func interpolate(
@@ -223,7 +390,7 @@ enum CFPanicJudge {
         workingDir: String,
         stdin: String?,
         timeoutSeconds: TimeInterval
-    ) -> CFPanicProcessResult {
+    ) -> CPPanicProcessResult {
         let process = Process()
         if executable.contains("/") {
             process.executableURL = URL(fileURLWithPath: executable)
@@ -244,7 +411,7 @@ enum CFPanicJudge {
         do {
             try process.run()
         } catch {
-            return CFPanicProcessResult(
+            return CPPanicProcessResult(
                 exitCode: 127,
                 stdout: "",
                 stderr: "Failed to run \(executable): \(error.localizedDescription)",
@@ -272,7 +439,7 @@ enum CFPanicJudge {
 
         let out = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        return CFPanicProcessResult(exitCode: process.terminationStatus, stdout: out, stderr: err, timedOut: timedOut)
+        return CPPanicProcessResult(exitCode: process.terminationStatus, stdout: out, stderr: err, timedOut: timedOut)
     }
 
     private static func normalize(_ s: String) -> String {
@@ -291,147 +458,226 @@ enum CFPanicJudge {
     }
 }
 
-struct CodeforcesPanicView: View {
-    let difficulty: CFPanicDifficulty
+// MARK: - View
+
+struct CompetitivePanicView: View {
+    let difficulty: CPDifficulty
     let onUnlock: () async -> Bool
 
-    @State private var problems: [CFPanicProblem] = []
-    @State private var languages: [CFPanicLanguage] = []
+    @State private var problems: [CPPanicProblem] = []
+    @State private var languages: [CPPanicLanguage] = []
     @State private var selectedLanguageID = ""
     @State private var code = ""
     @State private var resultText = ""
     @State private var testsPassed = false
     @State private var isRunning = false
     @State private var isSubmitting = false
+    @State private var currentProblem: CPPanicProblem?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Codeforces Panic")
-                .font(.title3.weight(.semibold))
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Competitive Programming Panic")
+                    .font(.title3.weight(.semibold))
 
-            if filteredProblems.isEmpty || languages.isEmpty {
-                Text("Problem bank or language presets not found.")
-                    .foregroundColor(.red)
-                Text("Expected: /usr/local/share/bliss/problems/codeforces.json")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            } else {
-                HStack {
-                    Text("Problem").font(.callout.weight(.semibold))
-                    Spacer()
-                    Text(difficulty.rawValue.capitalized)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                if let problem = selectedProblem, let language = selectedLanguage {
-                    HStack {
-                        Text("\(problem.id) \(problem.title)")
-                            .font(.headline)
-                        Spacer()
-                        Picker("Language", selection: $selectedLanguageID) {
-                            ForEach(languages) { lang in
-                                Text(lang.displayName).tag(lang.id)
-                            }
-                        }
-                        .frame(width: 220)
-                    }
-
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Description")
-                                .font(.caption.weight(.semibold))
-                            Text(problem.statement)
-                                .textSelection(.enabled)
-                                .font(.system(.body, design: .monospaced))
-
-                            if let input = problem.input {
-                                Text("Input")
-                                    .font(.caption.weight(.semibold))
-                                    .padding(.top, 6)
-                                Text(input)
-                                    .textSelection(.enabled)
-                                    .font(.system(.body, design: .monospaced))
-                            }
-
-                            if let output = problem.output {
-                                Text("Output")
-                                    .font(.caption.weight(.semibold))
-                                    .padding(.top, 6)
-                                Text(output)
-                                    .textSelection(.enabled)
-                                    .font(.system(.body, design: .monospaced))
-                            }
-
-                            Text(problem.url)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(height: 170)
-                    .padding(8)
-                    .background(.black.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
-
-                    TextEditor(text: $code)
-                        .font(.system(.body, design: .monospaced))
-                        .frame(height: 220)
-                        .border(.gray.opacity(0.3))
-                        .onChange(of: selectedLanguageID) { _, _ in
-                            testsPassed = false
-                            code = ""
-                        }
-
-                    HStack {
-                        Button("Run Tests") {
-                            runTests(problem: problem, language: language)
-                        }
-                        .disabled(isRunning || code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                        Button("Submit Panic") {
-                            submitPanic()
-                        }
-                        .disabled(isSubmitting || !testsPassed)
-
-                        if isRunning || isSubmitting {
-                            ProgressView().controlSize(.small)
-                        }
-                    }
-
-                    Text(resultText)
-                        .font(.footnote.monospaced())
-                        .foregroundColor(testsPassed ? .green : .secondary)
-                        .lineLimit(8)
+                if filteredProblems.isEmpty || languages.isEmpty {
+                    errorSection
+                } else if let problem = selectedProblem, let language = selectedLanguage {
+                    problemHeader(problem)
+                    problemDescription(problem)
+                    codeEditor
+                    controlBar(problem: problem, language: language)
                 }
             }
         }
         .onAppear {
-            problems = CFPanicData.loadProblems()
-            languages = CFPanicData.loadLanguages()
+            problems = CPPanicData.loadProblems()
+            languages = CPPanicData.loadLanguages()
             selectedLanguageID = languages.first?.id ?? ""
             pickRandomProblem()
         }
-        .onChange(of: difficulty) { _, _ in
+        .onChange(of: difficulty) { _ in
             pickRandomProblem()
         }
     }
 
-    private var selectedProblem: CFPanicProblem? {
+    // MARK: - Extracted sub-views
+
+    private var errorSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Problem bank or language presets not found.")
+                .foregroundColor(.red)
+            Text("Looked in:")
+                .font(.caption).foregroundColor(.secondary)
+            Text("  /usr/local/share/bliss/problems/problems.json")
+                .font(.caption).foregroundColor(.secondary)
+            Text("  ~/.config/bliss/problems/problems.json")
+                .font(.caption).foregroundColor(.secondary)
+            if !problems.isEmpty {
+                Text("Loaded \(problems.count) problems, but none match difficulty \"\(difficulty.rawValue)\".")
+                    .font(.caption).foregroundColor(.orange)
+            }
+            if languages.isEmpty {
+                Text("No language presets loaded. Check panic_languages.json or defaults.")
+                    .font(.caption).foregroundColor(.orange)
+            }
+        }
+    }
+
+    private func problemHeader(_ problem: CPPanicProblem) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Problem").font(.callout.weight(.semibold))
+                Spacer()
+                Text(difficulty.rawValue.capitalized)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            HStack {
+                Text("\(problem.id) \u{2014} \(problem.title)")
+                    .font(.headline)
+                Spacer()
+                Picker("Language", selection: $selectedLanguageID) {
+                    ForEach(languages) { lang in
+                        Text(lang.displayName).tag(lang.id)
+                    }
+                }
+                .frame(width: 220)
+            }
+        }
+    }
+
+    private func problemDescription(_ problem: CPPanicProblem) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Description")
+                    .font(.caption.weight(.semibold))
+                Text(MathRenderer.render(problem.statement))
+                    .textSelection(.enabled)
+                    .font(.system(.body, design: .monospaced))
+
+                if let input = problem.input {
+                    Text("Input")
+                        .font(.caption.weight(.semibold))
+                        .padding(.top, 6)
+                    Text(MathRenderer.render(input))
+                        .textSelection(.enabled)
+                        .font(.system(.body, design: .monospaced))
+                }
+
+                if let output = problem.output {
+                    Text("Output")
+                        .font(.caption.weight(.semibold))
+                        .padding(.top, 6)
+                    Text(MathRenderer.render(output))
+                        .textSelection(.enabled)
+                        .font(.system(.body, design: .monospaced))
+                }
+
+                if let constraints = problem.constraints {
+                    Text("Constraints")
+                        .font(.caption.weight(.semibold))
+                        .padding(.top, 6)
+                    Text(MathRenderer.render(constraints))
+                        .textSelection(.enabled)
+                        .font(.system(.body, design: .monospaced))
+                }
+
+                if !problem.tests.isEmpty {
+                    Text("Examples")
+                        .font(.caption.weight(.semibold))
+                        .padding(.top, 6)
+                    ForEach(Array(problem.tests.enumerated()), id: \.offset) { idx, test in
+                        HStack(alignment: .top, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Input \(idx + 1)").font(.caption2.weight(.medium))
+                                Text(test.input.trimmingCharacters(in: .whitespacesAndNewlines))
+                                    .font(.system(.caption, design: .monospaced))
+                                    .textSelection(.enabled)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Output \(idx + 1)").font(.caption2.weight(.medium))
+                                Text(test.output.trimmingCharacters(in: .whitespacesAndNewlines))
+                                    .font(.system(.caption, design: .monospaced))
+                                    .textSelection(.enabled)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(6)
+                        .background(.black.opacity(0.03), in: RoundedRectangle(cornerRadius: 4))
+                    }
+                }
+
+                Text(problem.url)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(height: 170)
+        .padding(8)
+        .background(.black.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var codeEditor: some View {
+        TextEditor(text: $code)
+            .font(.system(size: 13, weight: .regular, design: .monospaced))
+            .scrollContentBackground(.hidden)
+            .padding(8)
+            .background(Color(.textBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.secondary.opacity(0.15))
+            )
+            .frame(height: 240)
+            .onChange(of: selectedLanguageID) { _ in
+                testsPassed = false
+                code = ""
+            }
+    }
+
+    private func controlBar(problem: CPPanicProblem, language: CPPanicLanguage) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Button("Run Tests") {
+                    runTests(problem: problem, language: language)
+                }
+                .disabled(isRunning || code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                Button("Submit Panic") {
+                    submitPanic()
+                }
+                .disabled(isSubmitting || !testsPassed)
+
+                if isRunning || isSubmitting {
+                    ProgressView().controlSize(.small)
+                }
+            }
+
+            Text(resultText)
+                .font(.footnote.monospaced())
+                .foregroundColor(testsPassed ? .green : .secondary)
+                .lineLimit(8)
+        }
+    }
+
+    private var selectedProblem: CPPanicProblem? {
         if let current = currentProblem {
             return current
         }
         return filteredProblems.randomElement()
     }
 
-    private var selectedLanguage: CFPanicLanguage? {
+    private var selectedLanguage: CPPanicLanguage? {
         languages.first(where: { $0.id == selectedLanguageID })
     }
 
-    private var filteredProblems: [CFPanicProblem] {
+    private var filteredProblems: [CPPanicProblem] {
         let matches = problems.filter { $0.difficulty.lowercased() == difficulty.rawValue }
         return matches.isEmpty ? problems : matches
     }
-
-    @State private var currentProblem: CFPanicProblem?
 
     private func pickRandomProblem() {
         currentProblem = filteredProblems.randomElement()
@@ -440,13 +686,13 @@ struct CodeforcesPanicView: View {
         resultText = ""
     }
 
-    private func runTests(problem: CFPanicProblem, language: CFPanicLanguage) {
+    private func runTests(problem: CPPanicProblem, language: CPPanicLanguage) {
         testsPassed = false
         isRunning = true
         resultText = "Running tests..."
         let source = code
         Task {
-            let result = await Task.detached { CFPanicJudge.run(problem: problem, language: language, sourceCode: source) }.value
+            let result = await Task.detached { CPPanicJudge.run(problem: problem, language: language, sourceCode: source) }.value
             await MainActor.run {
                 isRunning = false
                 testsPassed = result.passed

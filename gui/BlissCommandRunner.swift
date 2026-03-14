@@ -16,10 +16,6 @@ enum BlissCommand {
            FileManager.default.isExecutableFile(atPath: envPath) {
             return envPath
         }
-        let devPath = "/Users/zain/Developer/bliss/build/bliss"
-        if FileManager.default.isExecutableFile(atPath: devPath) {
-            return devPath
-        }
         let installed = "/usr/local/bin/bliss"
         if FileManager.default.isExecutableFile(atPath: installed) {
             return installed
