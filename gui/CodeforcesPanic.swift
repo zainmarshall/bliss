@@ -277,8 +277,7 @@ enum CPPanicData {
     }
 }
 
-// judge 
-
+// judgeman - liek Higuruma from jjk ykyk
 enum CPPanicJudge {
     static func run(problem: CPPanicProblem, language: CPPanicLanguage, sourceCode: String) -> CPPanicJudgeResult {
         let fm = FileManager.default
@@ -458,7 +457,7 @@ enum CPPanicJudge {
     }
 }
 
-// MARK: - View
+// cp render 
 
 struct CompetitivePanicView: View {
     let difficulty: CPDifficulty
@@ -501,7 +500,6 @@ struct CompetitivePanicView: View {
         }
     }
 
-    // MARK: - Extracted sub-views
 
     private var errorSection: some View {
         VStack(alignment: .leading, spacing: 8) {
