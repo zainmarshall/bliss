@@ -13,6 +13,14 @@ private enum SetupStep: Int, CaseIterable {
     case welcome, websites, apps, browsers, panicMode, panicConfig, ready
 }
 
+// Shared wizard state so challenge config views can read/write it
+class SetupWizardState: ObservableObject {
+    @Published var panicMode: String = "typing"
+    @Published var quoteLength: String = "medium"
+    @Published var cpDifficulty: CPDifficulty = .easy
+    @Published var minesweeperSize: MinesweeperSize = .small
+}
+
 // flow
 
 struct FlowLayout: Layout {
@@ -107,7 +115,6 @@ private func browserBundleID(for name: String) -> String {
 
 struct ContentView: View {
     @StateObject private var vm = BlissViewModel()
-    @State private var panicQuote = "Focus is a practice, not a mood." // fallback
     @State private var importTarget: ImportTarget?
     @State private var pendingImportTarget: ImportTarget?
     @State private var selectedTab: DashboardTab = .main
@@ -119,9 +126,7 @@ struct ContentView: View {
     @State private var setupStep: SetupStep = .welcome
     @State private var setupWebsiteInput = ""
     @State private var setupWebsites: [String] = []
-    @State private var setupPanicMode: PanicModeSetting = .typing
-    @State private var setupQuoteLength: String = "medium"
-    @State private var setupCPDifficulty: CPDifficulty = .easy
+    @StateObject private var wizardState = SetupWizardState()
 
     var body: some View {
         Group {
@@ -146,21 +151,22 @@ struct ContentView: View {
             if url.host == "panic" {
                 selectedTab = .main
                 if vm.isSessionActive {
-                    panicQuote = vm.randomQuote()
                     vm.panicPresented = true
                 }
             }
         }
         .sheet(isPresented: $vm.panicPresented) {
-            PanicChallengeView(quote: panicQuote, mode: vm.panicMode, cpDifficulty: vm.cpDifficulty) {
+            PanicChallengeView(mode: vm.panicMode) {
                 await vm.panicFromGUI()
             }
+            .environmentObject(vm)
         }
         .sheet(isPresented: $uninstallChallengePresented) {
-            PanicChallengeView(quote: panicQuote, mode: vm.panicMode, cpDifficulty: vm.cpDifficulty) {
+            PanicChallengeView(mode: vm.panicMode) {
                 vm.runUninstall()
                 return true
             }
+            .environmentObject(vm)
         }
         .onChange(of: importTarget) { newValue in
             if newValue != nil { pendingImportTarget = newValue }
@@ -271,7 +277,6 @@ struct ContentView: View {
                         Button("Start") { vm.startSession() }
                     } else {
                         Button("Panic") {
-                            panicQuote = vm.randomQuote()
                             vm.panicPresented = true
                         }
                         .foregroundColor(.red)
@@ -315,54 +320,18 @@ struct ContentView: View {
                             get: { vm.panicMode },
                             set: { vm.setPanicMode($0) }
                         )) {
-                            Text("Typing").tag(PanicModeSetting.typing)
-                            Text("Competitive Programming").tag(PanicModeSetting.competitive)
+                            ForEach(PanicChallengeRegistry.all) { challenge in
+                                Text(challenge.displayName).tag(challenge.id)
+                            }
                         }
                         .labelsHidden()
                         .frame(width: 250, alignment: .trailing)
                     }
 
-                    if vm.panicMode == .typing {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Quote Length")
-                                Text("Length of text you must type accurately")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Picker("", selection: Binding(
-                                get: { vm.quoteLength },
-                                set: { vm.setQuoteLength($0) }
-                            )) {
-                                Text("Short").tag("short")
-                                Text("Medium").tag("medium")
-                                Text("Long").tag("long")
-                                Text("Huge").tag("huge")
-                            }
-                            .labelsHidden()
-                            .frame(width: 250, alignment: .trailing)
-                        }
-                    } else {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Difficulty")
-                                Text("CSES problem difficulty")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Picker("", selection: Binding(
-                                get: { vm.cpDifficulty },
-                                set: { vm.setCPDifficulty($0) }
-                            )) {
-                                Text("Easy").tag(CPDifficulty.easy)
-                                Text("Medium").tag(CPDifficulty.medium)
-                                Text("Hard").tag(CPDifficulty.hard)
-                            }
-                            .labelsHidden()
-                            .frame(width: 250, alignment: .trailing)
-                        }
+                    // Show the selected challenge's settings subsection
+                    if let challenge = vm.currentChallenge,
+                       let makeSettings = challenge.makeSettingsView {
+                        makeSettings(vm)
                     }
                 } header: {
                     Label("Panic Challenge", systemImage: "bolt.shield")
@@ -384,12 +353,8 @@ struct ContentView: View {
                             .buttonStyle(.borderless)
                         }
                     }
-                    HStack {
-                        TextField("example.com", text: $vm.websiteInput)
-                            .textFieldStyle(.roundedBorder)
-                            .onSubmit { vm.addWebsite() }
-                        Button("Add") { vm.addWebsite() }
-                    }
+                    TextField("Add website...", text: $vm.websiteInput)
+                        .onSubmit { vm.addWebsite() }
                 } header: {
                     Label("Blocked Websites", systemImage: "globe")
                 }
@@ -489,7 +454,6 @@ struct ContentView: View {
         .alert("Uninstall Bliss?", isPresented: $showUninstallConfirm) {
             Button("Cancel", role: .cancel) { }
             Button("Continue", role: .destructive) {
-                panicQuote = vm.randomQuote()
                 uninstallChallengePresented = true
             }
         } message: {
@@ -733,103 +697,41 @@ struct ContentView: View {
             }
 
             VStack(spacing: 12) {
-                wizardModeCard(
-                    .typing,
-                    icon: "keyboard",
-                    title: "Typing Test",
-                    description: "Type a quote with 95% accuracy."
-                )
-                wizardModeCard(
-                    .competitive,
-                    icon: "chevron.left.forwardslash.chevron.right",
-                    title: "Competitive Programming",
-                    description: "Solve a CSES problem of your selected difficulty."
-                )
+                ForEach(PanicChallengeRegistry.all) { challenge in
+                    wizardModeCard(challenge)
+                }
             }
         }
     }
 
     private var wizardPanicConfig: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            if setupPanicMode == .typing {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Quote Length")
-                        .font(.title2.weight(.semibold))
-                    Text("How long should the typing challenge quote be?")
-                        .foregroundColor(.secondary)
-                }
-
-                VStack(spacing: 8) {
-                    wizardOptionCard("Short", subtitle: "A sentence or two", selected: setupQuoteLength == "short") { setupQuoteLength = "short" }
-                    wizardOptionCard("Medium", subtitle: "A short paragraph", selected: setupQuoteLength == "medium") { setupQuoteLength = "medium" }
-                    wizardOptionCard("Long", subtitle: "A full paragraph", selected: setupQuoteLength == "long") { setupQuoteLength = "long" }
-                    wizardOptionCard("Huge", subtitle: "Multiple paragraphs", selected: setupQuoteLength == "huge") { setupQuoteLength = "huge" }
-                }
+        Group {
+            if let challenge = PanicChallengeRegistry.find(wizardState.panicMode),
+               let makeConfig = challenge.makeWizardConfigView {
+                makeConfig()
+                    .environmentObject(wizardState)
             } else {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Problem Difficulty")
-                        .font(.title2.weight(.semibold))
-                    Text("How hard should the CSES problem be?")
+                VStack(spacing: 16) {
+                    Text("No additional configuration needed.")
                         .foregroundColor(.secondary)
-                }
-
-                VStack(spacing: 8) {
-                    wizardOptionCard("Easy", subtitle: "Introductory & sorting problems", selected: setupCPDifficulty == .easy) { setupCPDifficulty = .easy }
-                    wizardOptionCard("Medium", subtitle: "Dynamic programming & graphs", selected: setupCPDifficulty == .medium) { setupCPDifficulty = .medium }
-                    wizardOptionCard("Hard", subtitle: "Advanced tree & math problems", selected: setupCPDifficulty == .hard) { setupCPDifficulty = .hard }
                 }
             }
         }
     }
 
-    private func wizardOptionCard(_ title: String, subtitle: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.callout.weight(.medium))
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
-                if selected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.accentColor)
-                }
-            }
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(selected ? Color.accentColor : Color.secondary.opacity(0.2),
-                            lineWidth: selected ? 2 : 1)
-            )
-            .background(
-                selected ? Color.accentColor.opacity(0.05) : Color.clear,
-                in: RoundedRectangle(cornerRadius: 8)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func wizardModeCard(
-        _ mode: PanicModeSetting,
-        icon: String,
-        title: String,
-        description: String
-    ) -> some View {
-        let selected = setupPanicMode == mode
+    private func wizardModeCard(_ challenge: PanicChallengeDefinition) -> some View {
+        let selected = wizardState.panicMode == challenge.id
         return Button {
-            setupPanicMode = mode
+            wizardState.panicMode = challenge.id
         } label: {
             HStack(spacing: 14) {
-                Image(systemName: icon)
+                Image(systemName: challenge.iconName)
                     .font(.title2)
                     .frame(width: 32)
                     .foregroundColor(selected ? .accentColor : .secondary)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.callout.weight(.medium))
-                    Text(description)
+                    Text(challenge.displayName).font(.callout.weight(.medium))
+                    Text(challenge.shortDescription)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -885,14 +787,12 @@ struct ContentView: View {
                         systemImage: "safari"
                     )
                 }
-                Label(
-                    setupPanicMode == .typing
-                        ? "Typing test \u{2014} \(setupQuoteLength) quotes"
-                        : "Competitive programming \u{2014} \(setupCPDifficulty == .easy ? "easy" : setupCPDifficulty == .medium ? "medium" : "hard") difficulty",
-                    systemImage: setupPanicMode == .typing
-                        ? "keyboard"
-                        : "chevron.left.forwardslash.chevron.right"
-                )
+                if let challenge = PanicChallengeRegistry.find(wizardState.panicMode) {
+                    Label(
+                        "\(challenge.displayName) challenge",
+                        systemImage: challenge.iconName
+                    )
+                }
             }
             .foregroundColor(.secondary)
             .padding(16)
@@ -903,7 +803,6 @@ struct ContentView: View {
 
     private func triggerPanic() {
         if vm.isSessionActive {
-            panicQuote = vm.randomQuote()
             vm.panicPresented = true
         }
     }
@@ -916,11 +815,13 @@ struct ContentView: View {
     }
 
     private func finishSetup() {
-        vm.setPanicMode(setupPanicMode)
-        if setupPanicMode == .typing {
-            vm.setQuoteLength(setupQuoteLength)
-        } else {
-            vm.setCPDifficulty(setupCPDifficulty)
+        vm.setPanicMode(wizardState.panicMode)
+        if wizardState.panicMode == "typing" {
+            vm.setQuoteLength(wizardState.quoteLength)
+        } else if wizardState.panicMode == "competitive" {
+            vm.setCPDifficulty(wizardState.cpDifficulty)
+        } else if wizardState.panicMode == "minesweeper" {
+            vm.setMinesweeperSize(wizardState.minesweeperSize)
         }
         for site in setupWebsites where !vm.websites.contains(site) {
             vm.addWebsite(domain: site)

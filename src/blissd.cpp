@@ -111,12 +111,17 @@ int main(int argc, char* argv[]){
             }
         }
     }
-    if(!remove_hosts_block()){
-        std::cout << "[blissd] failed to remove block\n";
-        return 1;
-    }
-    remove_firewall_block();
+    // Always attempt both removals even if one fails.
+    bool hosts_ok = remove_hosts_block();
+    bool fw_ok = remove_firewall_block();
     std::remove(kEndTimePath);
+
+    if(!hosts_ok){
+        std::cout << "[blissd] warning: failed to remove hosts block\n";
+    }
+    if(!fw_ok){
+        std::cout << "[blissd] warning: failed to remove firewall block\n";
+    }
     std::cout << "[blissd] unblocked\n";
-    return 0;
+    return (hosts_ok && fw_ok) ? 0 : 1;
 }

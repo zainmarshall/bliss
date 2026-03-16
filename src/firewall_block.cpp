@@ -166,8 +166,22 @@ bool apply_firewall_block(){
 }
 
 bool remove_firewall_block(){
-    std::string cmd = string("/sbin/pfctl -t ") + kTableName + " -T flush >/dev/null 2>&1";
-    std::system(cmd.c_str());
+    // Flush the block table.
+    std::string flush = string("/sbin/pfctl -t ") + kTableName + " -T flush 2>&1";
+    int rc = std::system(flush.c_str());
+
+    // Kill any lingering states so existing connections aren't stuck blocked.
+    std::system("/sbin/pfctl -k 0.0.0.0/0 >/dev/null 2>&1");
+
+    // Disable pf to release the -E reference counter.  This undoes the
+    // pfctl -E from apply_firewall_block().  If another subsystem also
+    // enabled pf the ref-count will just decrement by one.
+    std::system("/sbin/pfctl -d >/dev/null 2>&1");
+
+    if(rc != 0){
+        std::cerr << "[bliss] warning: pfctl table flush returned " << rc << "\n";
+        return false;
+    }
     return true;
 }
 

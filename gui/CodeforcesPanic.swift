@@ -1,6 +1,113 @@
 import Foundation
 import SwiftUI
 
+enum CompetitiveChallenge {
+    static let definition = PanicChallengeDefinition(
+        id: "competitive",
+        displayName: "Competitive Programming",
+        iconName: "chevron.left.forwardslash.chevron.right",
+        shortDescription: "Solve a CSES problem of your selected difficulty.",
+        makeChallengeView: { onSuccess in
+            AnyView(CompetitivePanicViewWrapper(onSuccess: onSuccess))
+        },
+        makeSettingsView: { vm in
+            AnyView(CompetitiveSettingsView(vm: vm))
+        },
+        makeWizardConfigView: {
+            AnyView(CompetitiveWizardConfigView())
+        }
+    )
+}
+
+struct CompetitivePanicViewWrapper: View {
+    let onSuccess: () async -> Bool
+    @EnvironmentObject var vm: BlissViewModel
+
+    var body: some View {
+        CompetitivePanicView(difficulty: vm.cpDifficulty, onUnlock: {
+            let ok = await onSuccess()
+            return ok
+        })
+    }
+}
+
+struct CompetitiveSettingsView: View {
+    @ObservedObject var vm: BlissViewModel
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Difficulty")
+                Text("CSES problem difficulty")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            Picker("", selection: Binding(
+                get: { vm.cpDifficulty },
+                set: { vm.setCPDifficulty($0) }
+            )) {
+                Text("Easy").tag(CPDifficulty.easy)
+                Text("Medium").tag(CPDifficulty.medium)
+                Text("Hard").tag(CPDifficulty.hard)
+            }
+            .labelsHidden()
+            .frame(width: 250, alignment: .trailing)
+        }
+    }
+}
+
+struct CompetitiveWizardConfigView: View {
+    @EnvironmentObject var wizardState: SetupWizardState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Problem Difficulty")
+                    .font(.title2.weight(.semibold))
+                Text("How hard should the CSES problem be?")
+                    .foregroundColor(.secondary)
+            }
+
+            VStack(spacing: 8) {
+                wizardOptionCard("Easy", subtitle: "Introductory & sorting problems", selected: wizardState.cpDifficulty == .easy) { wizardState.cpDifficulty = .easy }
+                wizardOptionCard("Medium", subtitle: "Dynamic programming & graphs", selected: wizardState.cpDifficulty == .medium) { wizardState.cpDifficulty = .medium }
+                wizardOptionCard("Hard", subtitle: "Advanced tree & math problems", selected: wizardState.cpDifficulty == .hard) { wizardState.cpDifficulty = .hard }
+            }
+        }
+    }
+
+    private func wizardOptionCard(_ title: String, subtitle: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.callout.weight(.medium))
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                if selected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.accentColor)
+                }
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(selected ? Color.accentColor : Color.secondary.opacity(0.2),
+                            lineWidth: selected ? 2 : 1)
+            )
+            .background(
+                selected ? Color.accentColor.opacity(0.05) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 8)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct CPPanicTestCase: Codable {
     let input: String
     let output: String

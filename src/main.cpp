@@ -202,8 +202,9 @@ static std::string read_panic_mode(){
     // Trim whitespace
     while(!line.empty() && (line.back() == '\n' || line.back() == '\r' || line.back() == ' '))
         line.pop_back();
-    if(line == "competitive" || line == "codeforces") return "competitive";
-    return "typing";
+    if(line.empty()) return "typing";
+    if(line == "codeforces") return "competitive";
+    return line;
 }
 
 static bool open_bliss_gui(){
@@ -768,15 +769,17 @@ static void print_status(){
     }
     auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     long long remaining = end_time - static_cast<long long>(now);
+    if(remaining <= 0){
+        // Timer has expired; daemon may still be cleaning up but the
+        // session is logically over.
+        std::cout << "status: not running\n";
+        return;
+    }
     std::cout << "status: running\n";
     std::cout << "ends at (epoch): " << end_time << "\n";
-    if(remaining > 0){
-        long long minutes = remaining / 60;
-        long long seconds = remaining % 60;
-        std::cout << "remaining: " << minutes << "m " << seconds << "s\n";
-    }else{
-        std::cout << "remaining: 0m 0s\n";
-    }
+    long long minutes = remaining / 60;
+    long long seconds = remaining % 60;
+    std::cout << "remaining: " << minutes << "m " << seconds << "s\n";
     if(geteuid() == 0){
         std::cout << "pf table active: " << (is_firewall_block_active() ? "yes" : "no") << "\n";
         return;
@@ -1029,8 +1032,8 @@ int main(int argc, char* argv[]){
         bool skip_challenge = (argc >= 3 && std::string(argv[2]) == "--skip-challenge");
         if(!skip_challenge){
             std::string panic_mode = read_panic_mode();
-            if(panic_mode == "competitive"){
-                std::cout << "panic mode is set to competitive programming\n";
+            if(panic_mode != "typing"){
+                std::cout << "panic mode is set to " << panic_mode << "\n";
                 std::cout << "opening Bliss GUI for the challenge...\n";
                 if(!open_bliss_gui()){
                     std::cout << "[error] could not find BlissGUI.app\n";

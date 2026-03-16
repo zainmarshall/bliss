@@ -1,10 +1,5 @@
 import Foundation
 
-enum PanicModeSetting: String, CaseIterable {
-    case typing = "typing"
-    case competitive = "competitive"
-}
-
 enum CPDifficulty: String, CaseIterable {
     case easy = "easy"
     case medium = "medium"
@@ -31,8 +26,13 @@ final class BlissViewModel: ObservableObject {
     @Published var browsers: [String] = []
     @Published var websiteInput = ""
     @Published var quoteLength = "medium"
-    @Published var panicMode: PanicModeSetting = .typing
+    @Published var panicMode: String = "typing"
     @Published var cpDifficulty: CPDifficulty = .easy
+    @Published var minesweeperSize: MinesweeperSize = .small
+
+    var currentChallenge: PanicChallengeDefinition? {
+        PanicChallengeRegistry.find(panicMode)
+    }
     @Published var output = ""
     @Published var errorMessage: String?
     @Published var panicPresented = false
@@ -70,6 +70,7 @@ final class BlissViewModel: ObservableObject {
         syncQuoteLengthFromConfig()
         syncPanicModeFromConfig()
         syncCPDifficultyFromConfig()
+        syncMinesweeperSizeFromConfig()
         Task {
             await refreshStatusAsync()
             if isSessionActive {
@@ -179,7 +180,7 @@ final class BlissViewModel: ObservableObject {
         }
     }
 
-    func setPanicMode(_ mode: PanicModeSetting) {
+    func setPanicMode(_ mode: String) {
         guard !isSessionActive else { return }
         panicMode = mode
         savePanicModeToConfig()
@@ -250,15 +251,26 @@ final class BlissViewModel: ObservableObject {
         }
     }
 
+    func setMinesweeperSize(_ size: MinesweeperSize) {
+        guard !isSessionActive else { return }
+        minesweeperSize = size
+        saveMinesweeperSizeToConfig()
+    }
+
     private func syncPanicModeFromConfig() {
         let url = panicModeConfigURL()
         guard let raw = try? String(contentsOf: url, encoding: .utf8) else {
-            panicMode = .typing
+            panicMode = "typing"
             return
         }
         var value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if value == "codeforces" { value = "competitive" }
-        panicMode = PanicModeSetting(rawValue: value) ?? .typing
+        // Validate against registry; fall back to typing
+        if PanicChallengeRegistry.find(value) != nil {
+            panicMode = value
+        } else {
+            panicMode = "typing"
+        }
     }
 
     private func savePanicModeToConfig() {
@@ -266,7 +278,7 @@ final class BlissViewModel: ObservableObject {
             .appendingPathComponent(".config/bliss", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = panicModeConfigURL()
-        try? (panicMode.rawValue + "\n").data(using: .utf8)?.write(to: url)
+        try? (panicMode + "\n").data(using: .utf8)?.write(to: url)
     }
 
     private func panicModeConfigURL() -> URL {
@@ -295,6 +307,29 @@ final class BlissViewModel: ObservableObject {
     private func cpDifficultyConfigURL() -> URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".config/bliss/panic_difficulty.txt")
+    }
+
+    private func syncMinesweeperSizeFromConfig() {
+        let url = minesweeperSizeConfigURL()
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else {
+            minesweeperSize = .small
+            return
+        }
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        minesweeperSize = MinesweeperSize(rawValue: value) ?? .small
+    }
+
+    private func saveMinesweeperSizeToConfig() {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = minesweeperSizeConfigURL()
+        try? (minesweeperSize.rawValue + "\n").data(using: .utf8)?.write(to: url)
+    }
+
+    private func minesweeperSizeConfigURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss/minesweeper_size.txt")
     }
 
     private func refreshStatusAsync() async {
@@ -344,6 +379,14 @@ final class BlissViewModel: ObservableObject {
         let minutes = remaining / 60
         let seconds = remaining % 60
         remainingText = "remaining: \(minutes)m \(String(format: "%02d", seconds))s"
+        if remaining <= 0 && isSessionActive {
+            isSessionActive = false
+            endTimeEpoch = nil
+            panicPresented = false
+            statusText = "status: idle"
+            remainingText = "remaining: -"
+            refreshAll()
+        }
     }
 
     private func refreshWebsitesAsync() async {
