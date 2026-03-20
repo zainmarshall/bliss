@@ -24,7 +24,7 @@ https://github.com/user-attachments/assets/c681f4bc-3413-435e-bcb4-4d17c81feb56
 
 ```bash
 curl -fsSL \
-  "https://github.com/zainmarshall/bliss/releases/download/v0.3.0/bliss-macos-universal.zip" \
+  "https://github.com/zainmarshall/bliss/releases/download/v0.4.0/bliss-macos-universal.zip" \
   -o /tmp/bliss.zip && \
   rm -rf /tmp/bliss && mkdir -p /tmp/bliss && \
   unzip -q /tmp/bliss.zip -d /tmp/bliss && \
