@@ -1,1 +1,0 @@
-/usr/bin/c++  -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/blissd.dir/src/blissd.cpp.o CMakeFiles/blissd.dir/src/hosts_block.cpp.o CMakeFiles/blissd.dir/src/firewall_block.cpp.o -o blissd
