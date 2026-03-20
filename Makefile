@@ -1,26 +1,22 @@
-.PHONY: all build build-gui build-menubar install uninstall test setup
+.PHONY: all build build-gui install uninstall test setup
 
 ROOT_DIR := $(CURDIR)
 BUILD_DIR := $(ROOT_DIR)/build
 
-# Full dev setup: build everything, install CLI + root helper, launch GUI + menubar
-all: build setup build-gui build-menubar
-	@/usr/bin/open /Applications/BlissGUI.app
+# Full dev setup: build everything, install CLI + root helper, launch GUI
+all: build setup build-gui
+	@/usr/bin/open /Applications/Bliss.app
 	@echo ""
-	@echo "[bliss] ready — CLI, GUI, and menubar are running"
+	@echo "[bliss] ready — CLI and GUI are running"
 
 # Build C++ CLI binaries
 build:
 	@cmake -S "$(ROOT_DIR)" -B "$(BUILD_DIR)" >/dev/null 2>&1
 	@cmake --build "$(BUILD_DIR)"
 
-# Build and launch GUI app bundle
+# Build and launch GUI app bundle (includes menubar)
 build-gui:
 	@bash "$(ROOT_DIR)/scripts/run_gui.sh"
-
-# Build and launch menubar
-build-menubar:
-	@bash "$(ROOT_DIR)/scripts/install_menubar.sh"
 
 # Setup: symlink CLI, install root helper, copy app to /Applications
 setup:

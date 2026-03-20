@@ -5,7 +5,7 @@ enum TypingChallenge {
         id: "typing",
         displayName: "Typing",
         iconName: "keyboard",
-        shortDescription: "Type a quote with 95% accuracy.",
+        shortDescription: "Type a quote with 100% accuracy.",
         makeChallengeView: { onSuccess in
             AnyView(TypingPanicViewWrapper(onSuccess: onSuccess))
         },
@@ -18,13 +18,25 @@ enum TypingChallenge {
     )
 }
 
-// Wrapper that loads a random quote from the view model
+// Wrapper that loads a random quote from the view model (once, on appear)
 struct TypingPanicViewWrapper: View {
     let onSuccess: () async -> Bool
     @EnvironmentObject var vm: BlissViewModel
+    @State private var quote: String?
 
     var body: some View {
-        TypingPanicView(quote: vm.randomQuote(), onSuccess: onSuccess)
+        Group {
+            if let quote {
+                TypingPanicView(quote: quote, onSuccess: onSuccess)
+            } else {
+                ProgressView()
+            }
+        }
+        .onAppear {
+            if quote == nil {
+                quote = vm.randomQuote()
+            }
+        }
     }
 }
 
@@ -40,25 +52,25 @@ struct TypingPanicView: View {
     @State private var commandError: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Type with at least 95% accuracy to unlock.")
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Type the quote below with 100% accuracy to unlock.")
                 .foregroundColor(.secondary)
 
             Text(renderedPrompt)
-                .font(.system(.body, design: .monospaced))
+                .font(.system(size: 18, design: .monospaced))
+                .lineSpacing(6)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .background(.black.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+                .padding(.vertical, 8)
                 .onTapGesture { isInputFocused = true }
 
-            ProgressView(value: accuracy / 100.0)
-                .tint(accuracy >= 95 ? .green : .orange)
-            Text("Accuracy: \(Int(accuracy.rounded()))%")
+            ProgressView(value: progress)
+                .tint(accuracy >= 100 ? .green : .accentColor)
+            Text("\(typed.count) / \(quote.count) characters")
                 .font(.caption.monospacedDigit())
-                .foregroundColor(accuracy >= 95 ? .green : .secondary)
+                .foregroundColor(.secondary)
 
-            if submitted && accuracy < 95 {
-                Text("Challenge failed. Keep typing until you hit 95%.")
+            if submitted && accuracy < 100 {
+                Text("Not quite right. Fix any errors and keep going.")
                     .foregroundColor(.red)
                     .font(.caption)
             }
@@ -73,8 +85,8 @@ struct TypingPanicView: View {
                 .foregroundColor(.clear)
                 .accentColor(.clear)
                 .focused($isInputFocused)
-                .onChange(of: typed) { newValue in
-                    typed = sanitize(newValue)
+                .onChange(of: typed) {
+                    typed = sanitize(typed)
                 }
                 .frame(height: 1)
                 .opacity(0.02)
@@ -89,14 +101,14 @@ struct TypingPanicView: View {
                     Task {
                         submitted = true
                         commandError = nil
-                        guard accuracy >= 95 else { return }
+                        guard accuracy >= 100 else { return }
                         isSubmitting = true
                         let ok = await onSuccess()
                         isSubmitting = false
                         if ok {
                             dismiss()
                         } else {
-                            commandError = "Panic command failed. Session is still active."
+                            commandError = "Command failed \u{2014} try again."
                         }
                     }
                 }
@@ -107,12 +119,19 @@ struct TypingPanicView: View {
         .onAppear { isInputFocused = true }
     }
 
+    /// Fraction of quote typed so far (for progress bar)
+    private var progress: Double {
+        guard !quote.isEmpty else { return 0 }
+        return Double(typed.count) / Double(quote.count)
+    }
+
     private var accuracy: Double {
         let prompt = Array(quote)
         let input = Array(typed)
         guard !prompt.isEmpty else { return 0 }
+        guard input.count >= prompt.count else { return 0 }
         var correct = 0
-        for index in 0..<min(prompt.count, input.count) where prompt[index] == input[index] {
+        for index in 0..<prompt.count where prompt[index] == input[index] {
             correct += 1
         }
         return (Double(correct) / Double(prompt.count)) * 100.0
@@ -122,20 +141,45 @@ struct TypingPanicView: View {
         var output = AttributedString()
         let promptChars = Array(quote)
         let typedChars = Array(typed)
+
         for index in 0..<promptChars.count {
             var piece = AttributedString(String(promptChars[index]))
             if index < typedChars.count {
-                piece.foregroundColor = typedChars[index] == promptChars[index] ? .green : .red
+                if typedChars[index] == promptChars[index] {
+                    piece.foregroundColor = .green
+                } else {
+                    // Wrong character: show the expected char in red with underline
+                    piece.foregroundColor = .red
+                    piece.underlineStyle = .single
+                    piece.underlineColor = .red
+                }
             } else {
                 piece.foregroundColor = .secondary
             }
             output += piece
         }
+
+        // Extra typed characters beyond the quote length: show as red insertions
+        if typedChars.count > promptChars.count {
+            for index in promptChars.count..<typedChars.count {
+                var extra = AttributedString(String(typedChars[index]))
+                extra.foregroundColor = .red
+                extra.backgroundColor = .red.opacity(0.15)
+                output += extra
+            }
+        }
+
+        // MonkeyType-style: if the character at cursor position is a space error,
+        // show a visible red marker for wrong spaces within the typed range
+        // (This is handled above by showing the expected char underlined in red,
+        // which makes space errors visible since the space char gets a red underline)
+
         return output
     }
 
     private func sanitize(_ value: String) -> String {
-        let maxCount = Array(quote).count
+        // Allow typing beyond quote length so extra chars show as red
+        let maxCount = Array(quote).count + 20
         let filtered = value.filter { $0 == " " || ($0 >= "!" && $0 <= "~") }
         if filtered.count <= maxCount {
             return filtered
@@ -144,19 +188,15 @@ struct TypingPanicView: View {
     }
 }
 
-// Settings subsection for typing mode
 struct TypingSettingsView: View {
     @ObservedObject var vm: BlissViewModel
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Quote Length")
-                Text("Length of text you must type accurately")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            Spacer()
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Quote Length")
+            Text("Length of text you must type accurately")
+                .font(.caption)
+                .foregroundColor(.secondary)
             Picker("", selection: Binding(
                 get: { vm.quoteLength },
                 set: { vm.setQuoteLength($0) }
@@ -166,13 +206,11 @@ struct TypingSettingsView: View {
                 Text("Long").tag("long")
                 Text("Huge").tag("huge")
             }
-            .labelsHidden()
-            .frame(width: 250, alignment: .trailing)
+            .pickerStyle(.segmented)
         }
     }
 }
 
-// Wizard config step for typing mode
 struct TypingWizardConfigView: View {
     @EnvironmentObject var wizardState: SetupWizardState
 
@@ -186,41 +224,11 @@ struct TypingWizardConfigView: View {
             }
 
             VStack(spacing: 8) {
-                wizardOptionCard("Short", subtitle: "A sentence or two", selected: wizardState.quoteLength == "short") { wizardState.quoteLength = "short" }
-                wizardOptionCard("Medium", subtitle: "A short paragraph", selected: wizardState.quoteLength == "medium") { wizardState.quoteLength = "medium" }
-                wizardOptionCard("Long", subtitle: "A full paragraph", selected: wizardState.quoteLength == "long") { wizardState.quoteLength = "long" }
-                wizardOptionCard("Huge", subtitle: "Multiple paragraphs", selected: wizardState.quoteLength == "huge") { wizardState.quoteLength = "huge" }
+                WizardOptionCard(title: "Short", subtitle: "A sentence or two", selected: wizardState.quoteLength == "short") { wizardState.quoteLength = "short" }
+                WizardOptionCard(title: "Medium", subtitle: "A short paragraph", selected: wizardState.quoteLength == "medium") { wizardState.quoteLength = "medium" }
+                WizardOptionCard(title: "Long", subtitle: "A full paragraph", selected: wizardState.quoteLength == "long") { wizardState.quoteLength = "long" }
+                WizardOptionCard(title: "Huge", subtitle: "Multiple paragraphs", selected: wizardState.quoteLength == "huge") { wizardState.quoteLength = "huge" }
             }
         }
-    }
-
-    private func wizardOptionCard(_ title: String, subtitle: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.callout.weight(.medium))
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
-                if selected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.accentColor)
-                }
-            }
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(selected ? Color.accentColor : Color.secondary.opacity(0.2),
-                            lineWidth: selected ? 2 : 1)
-            )
-            .background(
-                selected ? Color.accentColor.opacity(0.05) : Color.clear,
-                in: RoundedRectangle(cornerRadius: 8)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 }

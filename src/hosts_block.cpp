@@ -42,6 +42,16 @@ bool parse_minutes(const char* s, int& out_minutes){
     return true;
 }
 
+bool parse_seconds(const char* s, int& out_seconds){
+    if(!s || *s == '\0') return false;
+    char* end = nullptr;
+    long val = std::strtol(s, &end, 10);
+    if(*end != '\0') return false;
+    if(val <= 0 || val > 86400) return false;
+    out_seconds = static_cast<int>(val);
+    return true;
+}
+
 static std::string trim(const std::string& s){
     size_t start = s.find_first_not_of(" \t\r\n");
     if(start == std::string::npos) return "";
@@ -442,6 +452,11 @@ bool remove_block_app_entries(const std::vector<std::string>& entries){
 static void flush_dns(){
     std::system("/usr/bin/dscacheutil -flushcache");
     std::system("/usr/bin/killall -HUP mDNSResponder");
+    // On macOS 15+ the HUP signal may not flush the resolver cache.
+    // Kill mDNSResponder so launchd restarts it with a clean cache.
+    std::system("/usr/bin/killall mDNSResponder >/dev/null 2>&1");
+    // Also try the launchctl restart path.
+    std::system("/bin/launchctl kickstart -k system/com.apple.mDNSResponder >/dev/null 2>&1");
 }
 
 static bool process_running(const std::string& name){

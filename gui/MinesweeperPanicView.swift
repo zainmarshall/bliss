@@ -59,8 +59,6 @@ struct MinesweeperPanicViewWrapper: View {
     }
 }
 
-// MARK: - Game Model
-
 struct MinesweeperCell {
     var isMine = false
     var isRevealed = false
@@ -100,6 +98,7 @@ class MinesweeperGame: ObservableObject {
         if grid[row][col].isMine {
             gameOver = true
             won = false
+            BlissSounds.playError()
             revealAll()
             return
         }
@@ -185,13 +184,12 @@ class MinesweeperGame: ObservableObject {
     }
 }
 
-// MARK: - View
-
 struct MinesweeperPanicView: View {
     let size: MinesweeperSize
     let onUnlock: () async -> Bool
 
     @StateObject private var game: MinesweeperGame
+    @Environment(\.dismiss) private var dismiss
     @State private var isSubmitting = false
     @State private var resultText = ""
 
@@ -203,11 +201,10 @@ struct MinesweeperPanicView: View {
 
     private let cellSize: CGFloat = 28
 
-    // Google Minesweeper-style palette
-    private static let grassLight = Color(red: 0.667, green: 0.827, blue: 0.447)   // #AAD371
-    private static let grassDark  = Color(red: 0.639, green: 0.804, blue: 0.416)    // #A3CD6A
-    private static let dirtLight  = Color(red: 0.886, green: 0.827, blue: 0.725)    // #E2D3B9
-    private static let dirtDark   = Color(red: 0.847, green: 0.784, blue: 0.675)    // #D8C8AC
+    private static let grassLight = Color(red: 0.667, green: 0.827, blue: 0.447)
+    private static let grassDark  = Color(red: 0.639, green: 0.804, blue: 0.416)
+    private static let dirtLight  = Color(red: 0.886, green: 0.827, blue: 0.725)
+    private static let dirtDark   = Color(red: 0.847, green: 0.784, blue: 0.675)
 
     var body: some View {
         VStack(spacing: 12) {
@@ -230,7 +227,6 @@ struct MinesweeperPanicView: View {
                     .foregroundColor(.secondary)
             }
 
-            // Grid
             VStack(spacing: 0) {
                 ForEach(0..<game.rows, id: \.self) { row in
                     HStack(spacing: 0) {
@@ -242,27 +238,19 @@ struct MinesweeperPanicView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 6))
 
-            // Fixed-height status bar so layout doesn't jump
             HStack {
-                if game.gameOver {
-                    if game.won {
-                        if isSubmitting {
-                            ProgressView().controlSize(.small)
-                        }
-                        Button("Unlock Session") {
-                            submitUnlock()
-                        }
-                        .disabled(isSubmitting)
-                        .buttonStyle(.borderedProminent)
-                    } else {
-                        Text("You hit a mine!")
-                            .foregroundColor(.red)
-                        Spacer()
-                        Button("Try Again") {
-                            game.reset(size: size)
-                            resultText = ""
-                        }
+                if game.gameOver && !game.won {
+                    Text("You hit a mine!")
+                        .foregroundColor(.red)
+                    Spacer()
+                    Button("Try Again") {
+                        game.reset(size: size)
+                        resultText = ""
                     }
+                } else if isSubmitting {
+                    ProgressView().controlSize(.small)
+                    Text("Unlocking...")
+                        .foregroundColor(.secondary)
                 } else if !resultText.isEmpty {
                     Text(resultText)
                         .font(.caption)
@@ -271,6 +259,12 @@ struct MinesweeperPanicView: View {
                 Spacer()
             }
             .frame(height: 28)
+        }
+        .onChange(of: game.won) {
+            if game.won {
+                BlissSounds.playSuccess()
+                submitUnlock()
+            }
         }
     }
 
@@ -299,7 +293,6 @@ struct MinesweeperPanicView: View {
                         .foregroundColor(numberColor(cell.adjacentMines))
                 }
             } else {
-                // Unrevealed — green grass checkerboard
                 grassColor(row: row, col: col)
 
                 if cell.isFlagged {
@@ -325,14 +318,14 @@ struct MinesweeperPanicView: View {
 
     private func numberColor(_ n: Int) -> Color {
         switch n {
-        case 1: return Color(red: 0.10, green: 0.46, blue: 0.82)  // blue
-        case 2: return Color(red: 0.22, green: 0.56, blue: 0.24)  // green
-        case 3: return Color(red: 0.83, green: 0.18, blue: 0.18)  // red
-        case 4: return Color(red: 0.46, green: 0.16, blue: 0.71)  // purple
-        case 5: return Color(red: 0.60, green: 0.34, blue: 0.14)  // brown
-        case 6: return Color(red: 0.00, green: 0.60, blue: 0.60)  // teal
-        case 7: return Color(red: 0.20, green: 0.20, blue: 0.20)  // dark gray
-        case 8: return Color(red: 0.50, green: 0.50, blue: 0.50)  // gray
+        case 1: return Color(red: 0.10, green: 0.46, blue: 0.82)
+        case 2: return Color(red: 0.22, green: 0.56, blue: 0.24)
+        case 3: return Color(red: 0.83, green: 0.18, blue: 0.18)
+        case 4: return Color(red: 0.46, green: 0.16, blue: 0.71)
+        case 5: return Color(red: 0.60, green: 0.34, blue: 0.14)
+        case 6: return Color(red: 0.00, green: 0.60, blue: 0.60)
+        case 7: return Color(red: 0.20, green: 0.20, blue: 0.20)
+        case 8: return Color(red: 0.50, green: 0.50, blue: 0.50)
         default: return .primary
         }
     }
@@ -342,8 +335,10 @@ struct MinesweeperPanicView: View {
         Task {
             let ok = await onUnlock()
             isSubmitting = false
-            if !ok {
-                resultText = "Panic command failed. Session is still active."
+            if ok {
+                dismiss()
+            } else {
+                resultText = "Command failed — try again."
             }
         }
     }
@@ -397,20 +392,15 @@ private extension View {
     }
 }
 
-// MARK: - Settings
-
 struct MinesweeperSettingsView: View {
     @ObservedObject var vm: BlissViewModel
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Grid Size")
-                Text("Board dimensions and mine count")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            Spacer()
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Grid Size")
+            Text("Board dimensions and mine count")
+                .font(.caption)
+                .foregroundColor(.secondary)
             Picker("", selection: Binding(
                 get: { vm.minesweeperSize },
                 set: { vm.setMinesweeperSize($0) }
@@ -419,13 +409,10 @@ struct MinesweeperSettingsView: View {
                     Text(size.displayName).tag(size)
                 }
             }
-            .labelsHidden()
-            .frame(width: 250, alignment: .trailing)
+            .pickerStyle(.segmented)
         }
     }
 }
-
-// MARK: - Wizard Config
 
 struct MinesweeperWizardConfigView: View {
     @EnvironmentObject var wizardState: SetupWizardState
@@ -441,8 +428,8 @@ struct MinesweeperWizardConfigView: View {
 
             VStack(spacing: 8) {
                 ForEach(MinesweeperSize.allCases, id: \.self) { size in
-                    wizardOptionCard(
-                        size.rawValue.capitalized,
+                    WizardOptionCard(
+                        title: size.rawValue.capitalized,
                         subtitle: size.displayName,
                         selected: wizardState.minesweeperSize == size
                     ) {
@@ -451,35 +438,5 @@ struct MinesweeperWizardConfigView: View {
                 }
             }
         }
-    }
-
-    private func wizardOptionCard(_ title: String, subtitle: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.callout.weight(.medium))
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
-                if selected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.accentColor)
-                }
-            }
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(selected ? Color.accentColor : Color.secondary.opacity(0.2),
-                            lineWidth: selected ? 2 : 1)
-            )
-            .background(
-                selected ? Color.accentColor.opacity(0.05) : Color.clear,
-                in: RoundedRectangle(cornerRadius: 8)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 }

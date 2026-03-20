@@ -18,6 +18,11 @@ enum PanicChallengeRegistry {
         TypingChallenge.definition,
         CompetitiveChallenge.definition,
         MinesweeperChallenge.definition,
+        PipesChallenge.definition,
+        SudokuChallenge.definition,
+        Game2048Challenge.definition,
+        WordleChallenge.definition,
+        SimonSaysChallenge.definition,
     ]
 
     static func find(_ key: String) -> PanicChallengeDefinition? {

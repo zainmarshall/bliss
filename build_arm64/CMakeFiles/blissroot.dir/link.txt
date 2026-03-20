@@ -1,0 +1,1 @@
+/usr/bin/c++  -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/blissroot.dir/src/blissroot.cpp.o CMakeFiles/blissroot.dir/src/hosts_block.cpp.o CMakeFiles/blissroot.dir/src/firewall_block.cpp.o -o blissroot

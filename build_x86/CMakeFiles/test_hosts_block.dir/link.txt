@@ -1,0 +1,1 @@
+/usr/bin/c++  -arch x86_64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/test_hosts_block.dir/tests/test_hosts_block.cpp.o CMakeFiles/test_hosts_block.dir/src/hosts_block.cpp.o CMakeFiles/test_hosts_block.dir/src/firewall_block.cpp.o -o test_hosts_block

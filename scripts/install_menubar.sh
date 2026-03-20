@@ -65,14 +65,6 @@ else
 fi
 
 /bin/launchctl bootout "gui/${_BLISS_UID}/com.bliss.menubar" >/dev/null 2>&1 || true
-sleep 0.5
 /bin/launchctl bootstrap "gui/${_BLISS_UID}" "${LAUNCH_AGENT}" 2>/dev/null || true
 /bin/launchctl kickstart -k "gui/${_BLISS_UID}/com.bliss.menubar" 2>/dev/null || true
-
-# Verify it started
-sleep 1
-if /bin/launchctl print "gui/${_BLISS_UID}/com.bliss.menubar" >/dev/null 2>&1; then
-  echo "[bliss] menubar: installed and running"
-else
-  echo "[bliss] menubar: installed but may need a re-login to appear"
-fi
+echo "[bliss] menubar: installed"

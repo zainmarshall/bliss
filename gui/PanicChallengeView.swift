@@ -27,7 +27,8 @@ struct PanicChallengeView: View {
                     .padding(20)
             } else {
                 // Fallback to typing if mode not found
-                TypingPanicView(quote: vm.randomQuote(), onSuccess: onSuccess)
+                TypingPanicViewWrapper(onSuccess: onSuccess)
+                    .environmentObject(vm)
                     .padding(20)
             }
         }

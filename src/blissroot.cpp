@@ -38,6 +38,18 @@ static bool read_end_time(long long& end_time){
     return !in.fail();
 }
 
+static bool write_end_time_seconds(int seconds){
+    auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    long long end_time = static_cast<long long>(now) + static_cast<long long>(seconds);
+    std::ofstream out(kEndTimePath, std::ios::trunc);
+    if(!out.is_open()){
+        std::cout << "[error] unable to write " << kEndTimePath << "\n";
+        return false;
+    }
+    out << end_time << "\n";
+    return true;
+}
+
 static bool write_end_time(int minutes){
     auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     long long end_time = static_cast<long long>(now) + static_cast<long long>(minutes) * 60;
@@ -122,7 +134,8 @@ static bool cleanup_if_stale(){
     return true;
 }
 
-static bool handle_start(int minutes, const std::string& config_path, std::string& out_msg){
+static bool handle_start(int total_seconds, const std::string& config_path, std::string& out_msg){
+    int minutes = (total_seconds + 59) / 60; // for launchd job
     log_line("handle_start called");
     if(!config_path.empty()){
         set_config_path_override(config_path);
@@ -157,7 +170,7 @@ static bool handle_start(int minutes, const std::string& config_path, std::strin
         out_msg = "error: hosts block failed (see /tmp/blissroot.err)\n";
         return false;
     }
-    if(!write_end_time(minutes)){
+    if(!write_end_time_seconds(total_seconds)){
         out_msg = "error: end time write failed (see /tmp/blissroot.err)\n";
         return false;
     }
@@ -231,18 +244,29 @@ static bool handle_line(const std::string& line, std::string& out_msg){
     std::string cmd;
     iss >> cmd;
     if(cmd == "start"){
-        int minutes = 0;
-        iss >> minutes;
-        if(minutes <= 0){
-            out_msg = "error: invalid minutes";
+        int value = 0;
+        iss >> value;
+        if(value <= 0){
+            out_msg = "error: invalid duration";
             return false;
         }
-        std::string cfg_path;
-        std::getline(iss, cfg_path);
-        if(!cfg_path.empty() && cfg_path[0] == ' '){
-            cfg_path.erase(0, cfg_path.find_first_not_of(' '));
+        // Read remaining tokens: may contain --seconds and/or config path
+        std::string rest;
+        std::getline(iss, rest);
+        if(!rest.empty() && rest[0] == ' '){
+            rest.erase(0, rest.find_first_not_of(' '));
         }
-        return handle_start(minutes, cfg_path, out_msg);
+        bool use_seconds = false;
+        std::string cfg_path;
+        // Parse --seconds flag and config path from remaining
+        std::istringstream rest_ss(rest);
+        std::string token;
+        while(rest_ss >> token){
+            if(token == "--seconds") use_seconds = true;
+            else if(cfg_path.empty()) cfg_path = token;
+        }
+        int total_seconds = use_seconds ? value : value * 60;
+        return handle_start(total_seconds, cfg_path, out_msg);
     }
     if(cmd == "panic"){
         return handle_panic(out_msg);

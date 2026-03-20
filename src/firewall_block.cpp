@@ -8,6 +8,7 @@
 #include <iostream>
 #include <netdb.h>
 #include <set>
+#include <sstream>
 #include <string>
 #include <sys/types.h>
 #include <unistd.h>
@@ -167,21 +168,74 @@ bool apply_firewall_block(){
 
 bool remove_firewall_block(){
     // Flush the block table.
-    std::string flush = string("/sbin/pfctl -t ") + kTableName + " -T flush 2>&1";
+    std::string flush = string("/sbin/pfctl -t ") + kTableName + " -T flush >/dev/null 2>&1";
     int rc = std::system(flush.c_str());
+
+    // Also kill the table entirely so it doesn't persist across PF reloads.
+    std::string kill_table = string("/sbin/pfctl -t ") + kTableName + " -T kill >/dev/null 2>&1";
+    std::system(kill_table.c_str());
 
     // Kill any lingering states so existing connections aren't stuck blocked.
     std::system("/sbin/pfctl -k 0.0.0.0/0 >/dev/null 2>&1");
 
-    // Disable pf to release the -E reference counter.  This undoes the
-    // pfctl -E from apply_firewall_block().  If another subsystem also
-    // enabled pf the ref-count will just decrement by one.
+    // Write an empty anchor file so PF has no block rules if reloaded.
+    {
+        std::ofstream anchor(kPfAnchorPath, std::ios::trunc);
+        if(anchor.is_open()){
+            anchor << "# bliss anchor (inactive)\n";
+        }
+    }
+
+    // Reload PF config so the empty anchor takes effect in memory
+    // (without this, the old block rules stay loaded even though the
+    // table is flushed).
+    std::system("/sbin/pfctl -f /etc/pf.conf >/dev/null 2>&1");
+
+    // Disable pf.  Call -d twice to handle the extra reference from the
+    // mid-session re-apply in blissd (each pfctl -E increments a ref
+    // counter; each -d decrements it).
     std::system("/sbin/pfctl -d >/dev/null 2>&1");
+    std::system("/sbin/pfctl -d >/dev/null 2>&1");
+
+    // Flush DNS cache so the browser picks up the unblock immediately.
+    std::system("/usr/bin/dscacheutil -flushcache >/dev/null 2>&1");
+    std::system("/usr/bin/killall -HUP mDNSResponder >/dev/null 2>&1");
 
     if(rc != 0){
         std::cerr << "[bliss] warning: pfctl table flush returned " << rc << "\n";
         return false;
     }
+    return true;
+}
+
+bool deep_remove_firewall_block(){
+    // Aggressive cleanup: remove anchor config from pf.conf entirely.
+    remove_firewall_block();
+
+    // Remove the anchor file.
+    std::remove(kPfAnchorPath);
+
+    // Strip bliss anchor lines from pf.conf.
+    {
+        std::ifstream in(kPfConfPath);
+        if(in.is_open()){
+            std::ostringstream buf;
+            std::string line;
+            while(std::getline(in, line)){
+                if(line.find("anchor \"bliss\"") != std::string::npos) continue;
+                if(line.find("load anchor \"bliss\"") != std::string::npos) continue;
+                buf << line << "\n";
+            }
+            in.close();
+            std::ofstream out(kPfConfPath, std::ios::trunc);
+            if(out.is_open()){
+                out << buf.str();
+            }
+        }
+    }
+
+    // Reload PF config so removed anchor takes effect.
+    std::system("/sbin/pfctl -f /etc/pf.conf >/dev/null 2>&1");
     return true;
 }
 

@@ -1,0 +1,7 @@
+/Users/zain/Developer/bliss/build_x86/CMakeFiles/bliss.dir
+/Users/zain/Developer/bliss/build_x86/CMakeFiles/blissd.dir
+/Users/zain/Developer/bliss/build_x86/CMakeFiles/blissroot.dir
+/Users/zain/Developer/bliss/build_x86/CMakeFiles/test_hosts_block.dir
+/Users/zain/Developer/bliss/build_x86/CMakeFiles/test.dir
+/Users/zain/Developer/bliss/build_x86/CMakeFiles/edit_cache.dir
+/Users/zain/Developer/bliss/build_x86/CMakeFiles/rebuild_cache.dir

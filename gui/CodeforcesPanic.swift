@@ -24,10 +24,7 @@ struct CompetitivePanicViewWrapper: View {
     @EnvironmentObject var vm: BlissViewModel
 
     var body: some View {
-        CompetitivePanicView(difficulty: vm.cpDifficulty, onUnlock: {
-            let ok = await onSuccess()
-            return ok
-        })
+        CompetitivePanicView(difficulty: vm.cpDifficulty, onUnlock: onSuccess)
     }
 }
 
@@ -35,14 +32,11 @@ struct CompetitiveSettingsView: View {
     @ObservedObject var vm: BlissViewModel
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Difficulty")
-                Text("CSES problem difficulty")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            Spacer()
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Difficulty")
+            Text("CSES problem difficulty")
+                .font(.caption)
+                .foregroundColor(.secondary)
             Picker("", selection: Binding(
                 get: { vm.cpDifficulty },
                 set: { vm.setCPDifficulty($0) }
@@ -51,8 +45,7 @@ struct CompetitiveSettingsView: View {
                 Text("Medium").tag(CPDifficulty.medium)
                 Text("Hard").tag(CPDifficulty.hard)
             }
-            .labelsHidden()
-            .frame(width: 250, alignment: .trailing)
+            .pickerStyle(.segmented)
         }
     }
 }
@@ -70,41 +63,11 @@ struct CompetitiveWizardConfigView: View {
             }
 
             VStack(spacing: 8) {
-                wizardOptionCard("Easy", subtitle: "Introductory & sorting problems", selected: wizardState.cpDifficulty == .easy) { wizardState.cpDifficulty = .easy }
-                wizardOptionCard("Medium", subtitle: "Dynamic programming & graphs", selected: wizardState.cpDifficulty == .medium) { wizardState.cpDifficulty = .medium }
-                wizardOptionCard("Hard", subtitle: "Advanced tree & math problems", selected: wizardState.cpDifficulty == .hard) { wizardState.cpDifficulty = .hard }
+                WizardOptionCard(title: "Easy", subtitle: "Introductory & sorting problems", selected: wizardState.cpDifficulty == .easy) { wizardState.cpDifficulty = .easy }
+                WizardOptionCard(title: "Medium", subtitle: "Dynamic programming & graphs", selected: wizardState.cpDifficulty == .medium) { wizardState.cpDifficulty = .medium }
+                WizardOptionCard(title: "Hard", subtitle: "Advanced tree & math problems", selected: wizardState.cpDifficulty == .hard) { wizardState.cpDifficulty = .hard }
             }
         }
-    }
-
-    private func wizardOptionCard(_ title: String, subtitle: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.callout.weight(.medium))
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
-                if selected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.accentColor)
-                }
-            }
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(selected ? Color.accentColor : Color.secondary.opacity(0.2),
-                            lineWidth: selected ? 2 : 1)
-            )
-            .background(
-                selected ? Color.accentColor.opacity(0.05) : Color.clear,
-                in: RoundedRectangle(cornerRadius: 8)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 }
 
@@ -166,13 +129,11 @@ enum MathRenderer {
             "n": "ⁿ", "i": "ⁱ",
         ]
 
-        // bracess subscripts: _{...}
         result = result.replacingOccurrences(
             of: #"_\{([^}]+)\}"#,
             with: "",
             options: .regularExpression
         )
-        //add supers 
         if let regex = try? NSRegularExpression(pattern: #"_\{([^}]+)\}"#) {
             var working = text
             let nsRange = NSRange(working.startIndex..., in: working)
@@ -187,7 +148,6 @@ enum MathRenderer {
             result = working
         }
 
-        // supss
         if let regex = try? NSRegularExpression(pattern: #"_([0-9a-z])"#) {
             let nsRange = NSRange(result.startIndex..., in: result)
             let matches = regex.matches(in: result, range: nsRange)
@@ -200,7 +160,6 @@ enum MathRenderer {
             }
         }
 
-        // sups
         if let regex = try? NSRegularExpression(pattern: #"\^\{([^}]+)\}"#) {
             let nsRange = NSRange(result.startIndex..., in: result)
             let matches = regex.matches(in: result, range: nsRange)
@@ -224,7 +183,6 @@ enum MathRenderer {
             }
         }
 
-        // latex sybols
         result = result.replacingOccurrences(of: "\\le ", with: "≤ ")
         result = result.replacingOccurrences(of: "\\le\n", with: "≤\n")
         result = result.replacingOccurrences(of: "\\ge ", with: "≥ ")
@@ -264,12 +222,10 @@ enum MathRenderer {
         result = result.replacingOccurrences(of: "\\max ", with: "max ")
         result = result.replacingOccurrences(of: "\\gcd ", with: "gcd ")
 
-        // Remove remaining \text{...} wrappers
         if let regex = try? NSRegularExpression(pattern: #"\\text\{([^}]*)\}"#) {
             let nsRange = NSRange(result.startIndex..., in: result)
             result = regex.stringByReplacingMatches(in: result, range: nsRange, withTemplate: "$1")
         }
-        // Remove remaining \mathrm{...} etc
         if let regex = try? NSRegularExpression(pattern: #"\\(?:mathrm|mathit|mathbf)\{([^}]*)\}"#) {
             let nsRange = NSRange(result.startIndex..., in: result)
             result = regex.stringByReplacingMatches(in: result, range: nsRange, withTemplate: "$1")
@@ -510,9 +466,8 @@ enum CPPanicJudge {
         let errPipe = Pipe()
         process.standardOutput = outPipe
         process.standardError = errPipe
-        if stdin != nil {
-            process.standardInput = Pipe()
-        }
+        let inPipe = stdin != nil ? Pipe() : nil
+        if inPipe != nil { process.standardInput = inPipe }
 
         do {
             try process.run()
@@ -525,10 +480,8 @@ enum CPPanicJudge {
             )
         }
 
-        if let stdin, let inPipe = process.standardInput as? Pipe {
-            if let data = stdin.data(using: .utf8) {
-                inPipe.fileHandleForWriting.write(data)
-            }
+        if let inPipe, let data = stdin?.data(using: .utf8) {
+            inPipe.fileHandleForWriting.write(data)
             inPipe.fileHandleForWriting.closeFile()
         }
 
@@ -564,12 +517,11 @@ enum CPPanicJudge {
     }
 }
 
-// cp render 
-
 struct CompetitivePanicView: View {
     let difficulty: CPDifficulty
     let onUnlock: () async -> Bool
 
+    @Environment(\.dismiss) private var dismiss
     @State private var problems: [CPPanicProblem] = []
     @State private var languages: [CPPanicLanguage] = []
     @State private var selectedLanguageID = ""
@@ -602,11 +554,10 @@ struct CompetitivePanicView: View {
             selectedLanguageID = languages.first?.id ?? ""
             pickRandomProblem()
         }
-        .onChange(of: difficulty) { _ in
+        .onChange(of: difficulty) {
             pickRandomProblem()
         }
     }
-
 
     private var errorSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -737,7 +688,7 @@ struct CompetitivePanicView: View {
                     .stroke(Color.secondary.opacity(0.15))
             )
             .frame(height: 240)
-            .onChange(of: selectedLanguageID) { _ in
+            .onChange(of: selectedLanguageID) {
                 testsPassed = false
                 code = ""
             }
@@ -768,12 +719,7 @@ struct CompetitivePanicView: View {
         }
     }
 
-    private var selectedProblem: CPPanicProblem? {
-        if let current = currentProblem {
-            return current
-        }
-        return filteredProblems.randomElement()
-    }
+    private var selectedProblem: CPPanicProblem? { currentProblem }
 
     private var selectedLanguage: CPPanicLanguage? {
         languages.first(where: { $0.id == selectedLanguageID })
@@ -812,9 +758,11 @@ struct CompetitivePanicView: View {
             let unlocked = await onUnlock()
             await MainActor.run {
                 isSubmitting = false
-                if !unlocked {
+                if unlocked {
+                    dismiss()
+                } else {
                     testsPassed = false
-                    resultText = "Panic command failed. Session is still active."
+                    resultText = "Command failed — try again."
                 }
             }
         }

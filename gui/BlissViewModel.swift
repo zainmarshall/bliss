@@ -1,4 +1,114 @@
 import Foundation
+import SwiftUI
+
+
+struct BlissProfile: Codable, Identifiable, Hashable {
+    var id: String { name }
+    var name: String
+    var websites: [String]
+    var apps: [String]      // raw app entries
+    var browsers: [String]
+    var panicMode: String
+    var quoteLength: String
+    var colorName: String = "blue"
+
+    static let availableColors: [(name: String, color: Color)] = [
+        ("blue", .blue), ("purple", .purple), ("indigo", .indigo),
+        ("pink", .pink), ("red", .red), ("orange", .orange),
+        ("yellow", .yellow), ("green", .green), ("mint", .mint),
+        ("cyan", .cyan), ("teal", .teal),
+    ]
+
+    var color: Color {
+        Self.availableColors.first { $0.name == colorName }?.color ?? .blue
+    }
+}
+
+extension BlissProfile {
+    // Custom decoding so existing profiles without colorName still load
+    enum CodingKeys: String, CodingKey {
+        case name, websites, apps, browsers, panicMode, quoteLength, colorName
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        websites = try c.decode([String].self, forKey: .websites)
+        apps = try c.decode([String].self, forKey: .apps)
+        browsers = try c.decode([String].self, forKey: .browsers)
+        panicMode = try c.decode(String.self, forKey: .panicMode)
+        quoteLength = try c.decode(String.self, forKey: .quoteLength)
+        colorName = (try? c.decode(String.self, forKey: .colorName)) ?? "blue"
+    }
+}
+
+enum BlissProfileManager {
+    private static func profilesDir() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss/profiles", isDirectory: true)
+    }
+
+    private static func activeURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss/active_profile.txt")
+    }
+
+    static func listProfiles() -> [BlissProfile] {
+        let dir = profilesDir()
+        guard let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else {
+            return []
+        }
+        return files
+            .filter { $0.pathExtension == "json" }
+            .compactMap { url -> BlissProfile? in
+                guard let data = try? Data(contentsOf: url),
+                      let p = try? JSONDecoder().decode(BlissProfile.self, from: data) else { return nil }
+                return p
+            }
+            .sorted { $0.name < $1.name }
+    }
+
+    static func save(_ profile: BlissProfile) {
+        let dir = profilesDir()
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("\(profile.name).json")
+        guard let data = try? JSONEncoder().encode(profile) else { return }
+        try? data.write(to: url)
+    }
+
+    static func delete(name: String) {
+        let url = profilesDir().appendingPathComponent("\(name).json")
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    static func activeProfileName() -> String? {
+        guard let raw = try? String(contentsOf: activeURL(), encoding: .utf8) else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    static func setActiveProfile(_ name: String?) {
+        let url = activeURL()
+        if let name = name {
+            try? (name + "\n").data(using: .utf8)?.write(to: url)
+        } else {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    static func ensureDefaultConfig() {
+        guard listProfiles().isEmpty else { return }
+        let defaultProfile = BlissProfile(
+            name: "Default",
+            websites: ["youtube.com", "twitter.com", "reddit.com", "instagram.com", "tiktok.com", "facebook.com"],
+            apps: [],
+            browsers: [],
+            panicMode: "typing",
+            quoteLength: "medium"
+        )
+        save(defaultProfile)
+    }
+}
 
 enum CPDifficulty: String, CaseIterable {
     case easy = "easy"
@@ -29,13 +139,25 @@ final class BlissViewModel: ObservableObject {
     @Published var panicMode: String = "typing"
     @Published var cpDifficulty: CPDifficulty = .easy
     @Published var minesweeperSize: MinesweeperSize = .small
+    @Published var pipesSize: PipesSize = .small
+    @Published var sudokuDifficulty: SudokuDifficulty = .easy
+    @Published var simonDifficulty: SimonDifficulty = .easy
+    @Published var game2048Difficulty: Game2048Difficulty = .easy
+    @Published var wordleDifficulty: WordleDifficulty = .easy
+    @Published var stats = SessionStats(totalSessions: 0, totalFocusMinutes: 0, currentStreak: 0, longestStreak: 0, lastSessionDate: nil)
+    @Published var dailyMinutes: [String: Int] = [:]
+    @Published var profiles: [BlissProfile] = []
+    @Published var activeProfileName: String?
+    @Published var schedules: [BlissScheduleEntry] = []
+    private var lastTriggeredScheduleID: UUID?
+    private var lastTriggeredMinute: Int = -1
 
     var currentChallenge: PanicChallengeDefinition? {
         PanicChallengeRegistry.find(panicMode)
     }
     @Published var output = ""
     @Published var errorMessage: String?
-    @Published var panicPresented = false
+    @Published var dismissSheets = false
     @Published var isSessionActive = false
     @Published var endTimeEpoch: Int64?
 
@@ -53,6 +175,7 @@ final class BlissViewModel: ObservableObject {
             while !Task.isCancelled {
                 syncQuoteLengthFromConfig()
                 await refreshStatusAsync()
+                checkScheduledSessions()
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
             }
         }
@@ -71,6 +194,16 @@ final class BlissViewModel: ObservableObject {
         syncPanicModeFromConfig()
         syncCPDifficultyFromConfig()
         syncMinesweeperSizeFromConfig()
+        syncPipesSizeFromConfig()
+        syncSudokuDifficultyFromConfig()
+        syncSimonDifficultyFromConfig()
+        syncGame2048DifficultyFromConfig()
+        syncWordleDifficultyFromConfig()
+
+        stats = SessionStatsManager.load()
+        dailyMinutes = SessionStatsManager.dailyMinutes()
+        loadProfiles()
+        schedules = BlissScheduleManager.load()
         Task {
             await refreshStatusAsync()
             if isSessionActive {
@@ -95,14 +228,33 @@ final class BlissViewModel: ObservableObject {
         let url = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".config/bliss/setup_complete")
         try? "1\n".data(using: .utf8)?.write(to: url)
+        BlissProfileManager.ensureDefaultConfig()
     }
 
     func setManualError(_ message: String) {
         errorMessage = message
     }
 
+    /// Total seconds for the session. Set by the timer UI; falls back to minutesInput * 60.
+    var totalSecondsInput: Int?
+
     func startSession() {
-        runAction(["start", minutesInput], successRefresh: true)
+        let totalSecs: Int
+        if let s = totalSecondsInput, s > 0 {
+            totalSecs = s
+        } else {
+            totalSecs = (Int(minutesInput) ?? 25) * 60
+        }
+        let displayMins = (totalSecs + 59) / 60
+        runAction(["start", "\(totalSecs)", "--seconds"], successRefresh: true) { [weak self] in
+            BlissNotifications.sessionStarted(minutes: displayMins)
+            BlissNotifications.scheduleFiveMinWarning(totalSeconds: totalSecs)
+            BlissNotifications.scheduleSessionEnd(totalSeconds: totalSecs)
+            SessionStatsManager.recordSessionStart(minutes: displayMins)
+            self?.stats = SessionStatsManager.load()
+            self?.dailyMinutes = SessionStatsManager.dailyMinutes()
+        }
+        totalSecondsInput = nil
     }
 
     func addWebsite() {
@@ -125,10 +277,44 @@ final class BlissViewModel: ObservableObject {
         }
     }
 
+    /// Add multiple websites serially to avoid file write races.
+    func addWebsites(_ domains: [String]) {
+        guard !isSessionActive else { return }
+        let toAdd = domains
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && !websites.contains($0) }
+        guard !toAdd.isEmpty else { return }
+        Task {
+            for domain in toAdd {
+                let result = await Task.detached { BlissCommand.run(["config", "website", "add", domain]) }.value
+                if result.code != 0 {
+                    errorMessage = actionableMessage(from: result.combinedOutput)
+                    break
+                }
+            }
+            errorMessage = nil
+            await refreshWebsitesAsync()
+        }
+    }
+
     func removeWebsite(_ domain: String) {
         guard !isSessionActive else { return }
         runAction(["config", "website", "remove", domain], successRefresh: false) { [weak self] in
             self?.refreshWebsites()
+        }
+    }
+
+    /// Remove multiple websites serially.
+    func removeWebsites(_ domains: [String]) {
+        guard !isSessionActive else { return }
+        let toRemove = domains.filter { websites.contains($0) }
+        guard !toRemove.isEmpty else { return }
+        Task {
+            for domain in toRemove {
+                let _ = await Task.detached { BlissCommand.run(["config", "website", "remove", domain]) }.value
+            }
+            errorMessage = nil
+            await refreshWebsitesAsync()
         }
     }
 
@@ -193,6 +379,7 @@ final class BlissViewModel: ObservableObject {
     }
 
     func panicFromGUI() async -> Bool {
+        BlissNotifications.cancelAll()
         let result = await Task.detached { BlissCommand.run(["panic", "--skip-challenge"]) }.value
         output = result.combinedOutput
         if result.code == 0 {
@@ -332,6 +519,151 @@ final class BlissViewModel: ObservableObject {
             .appendingPathComponent(".config/bliss/minesweeper_size.txt")
     }
 
+    func setPipesSize(_ size: PipesSize) {
+        guard !isSessionActive else { return }
+        pipesSize = size
+        savePipesSizeToConfig()
+    }
+
+    private func syncPipesSizeFromConfig() {
+        let url = pipesSizeConfigURL()
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else {
+            pipesSize = .small
+            return
+        }
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        pipesSize = PipesSize(rawValue: value) ?? .small
+    }
+
+    private func savePipesSizeToConfig() {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = pipesSizeConfigURL()
+        try? (pipesSize.rawValue + "\n").data(using: .utf8)?.write(to: url)
+    }
+
+    private func pipesSizeConfigURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss/pipes_size.txt")
+    }
+
+    func setSudokuDifficulty(_ difficulty: SudokuDifficulty) {
+        guard !isSessionActive else { return }
+        sudokuDifficulty = difficulty
+        saveSudokuDifficultyToConfig()
+    }
+
+    private func syncSudokuDifficultyFromConfig() {
+        let url = sudokuDifficultyConfigURL()
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else {
+            sudokuDifficulty = .easy
+            return
+        }
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        sudokuDifficulty = SudokuDifficulty(rawValue: value) ?? .easy
+    }
+
+    private func saveSudokuDifficultyToConfig() {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = sudokuDifficultyConfigURL()
+        try? (sudokuDifficulty.rawValue + "\n").data(using: .utf8)?.write(to: url)
+    }
+
+    private func sudokuDifficultyConfigURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss/sudoku_difficulty.txt")
+    }
+
+    func setSimonDifficulty(_ difficulty: SimonDifficulty) {
+        guard !isSessionActive else { return }
+        simonDifficulty = difficulty
+        saveSimonDifficultyToConfig()
+    }
+
+    private func syncSimonDifficultyFromConfig() {
+        let url = simonDifficultyConfigURL()
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else {
+            simonDifficulty = .easy
+            return
+        }
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        simonDifficulty = SimonDifficulty(rawValue: value) ?? .easy
+    }
+
+    private func saveSimonDifficultyToConfig() {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = simonDifficultyConfigURL()
+        try? (simonDifficulty.rawValue + "\n").data(using: .utf8)?.write(to: url)
+    }
+
+    private func simonDifficultyConfigURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss/simon_difficulty.txt")
+    }
+
+    func setGame2048Difficulty(_ difficulty: Game2048Difficulty) {
+        guard !isSessionActive else { return }
+        game2048Difficulty = difficulty
+        saveGame2048DifficultyToConfig()
+    }
+
+    private func syncGame2048DifficultyFromConfig() {
+        let url = game2048DifficultyConfigURL()
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else {
+            game2048Difficulty = .easy
+            return
+        }
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        game2048Difficulty = Game2048Difficulty(rawValue: value) ?? .easy
+    }
+
+    private func saveGame2048DifficultyToConfig() {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = game2048DifficultyConfigURL()
+        try? (game2048Difficulty.rawValue + "\n").data(using: .utf8)?.write(to: url)
+    }
+
+    private func game2048DifficultyConfigURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss/game2048_difficulty.txt")
+    }
+
+    func setWordleDifficulty(_ difficulty: WordleDifficulty) {
+        guard !isSessionActive else { return }
+        wordleDifficulty = difficulty
+        saveWordleDifficultyToConfig()
+    }
+
+    private func syncWordleDifficultyFromConfig() {
+        let url = wordleDifficultyConfigURL()
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else {
+            wordleDifficulty = .easy
+            return
+        }
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        wordleDifficulty = WordleDifficulty(rawValue: value) ?? .easy
+    }
+
+    private func saveWordleDifficultyToConfig() {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = wordleDifficultyConfigURL()
+        try? (wordleDifficulty.rawValue + "\n").data(using: .utf8)?.write(to: url)
+    }
+
+    private func wordleDifficultyConfigURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/bliss/wordle_difficulty.txt")
+    }
+
     private func refreshStatusAsync() async {
         let result = await Task.detached { BlissCommand.run(["status"]) }.value
         if result.code != 0 {
@@ -382,9 +714,10 @@ final class BlissViewModel: ObservableObject {
         if remaining <= 0 && isSessionActive {
             isSessionActive = false
             endTimeEpoch = nil
-            panicPresented = false
+            dismissSheets = true
             statusText = "status: idle"
             remainingText = "remaining: -"
+            BlissNotifications.cancelAll()
             refreshAll()
         }
     }
@@ -515,48 +848,239 @@ final class BlissViewModel: ObservableObject {
         Task { await refreshBrowsersAsync() }
     }
 
-    func runUninstall() {
+
+    // MARK: - Profiles
+
+    func loadProfiles() {
+        profiles = BlissProfileManager.listProfiles()
+        if profiles.isEmpty {
+            BlissProfileManager.ensureDefaultConfig()
+            profiles = BlissProfileManager.listProfiles()
+        }
+        activeProfileName = BlissProfileManager.activeProfileName()
+    }
+
+    func saveCurrentAsProfile(name: String, colorName: String = "blue") {
+        guard !isSessionActive else { return }
+        let profile = BlissProfile(
+            name: name,
+            websites: websites,
+            apps: apps.map { $0.raw },
+            browsers: browsers,
+            panicMode: panicMode,
+            quoteLength: quoteLength,
+            colorName: colorName
+        )
+        BlissProfileManager.save(profile)
+        loadProfiles()
+    }
+
+    func setProfileColor(name: String, colorName: String) {
+        guard var profile = profiles.first(where: { $0.name == name }) else { return }
+        profile.colorName = colorName
+        BlissProfileManager.save(profile)
+        loadProfiles()
+    }
+
+    func applyProfile(_ profile: BlissProfile) {
+        guard !isSessionActive else { return }
+
+        // Clear current websites and add profile ones
+        for site in websites {
+            runAction(["config", "website", "remove", site], successRefresh: false, onSuccess: nil)
+        }
+        for site in profile.websites {
+            runAction(["config", "website", "add", site], successRefresh: false, onSuccess: nil)
+        }
+
+        // Clear current apps and add profile ones
+        for app in apps {
+            runAction(["config", "app", "remove", app.raw], successRefresh: false, onSuccess: nil)
+        }
+        for raw in profile.apps {
+            runAction(["config", "app", "add", raw], successRefresh: false, onSuccess: nil)
+        }
+
+        // Clear current browsers and add profile ones
+        for b in browsers {
+            runAction(["config", "browser", "remove", b], successRefresh: false, onSuccess: nil)
+        }
+        for b in profile.browsers {
+            runAction(["config", "browser", "add", b], successRefresh: false, onSuccess: nil)
+        }
+
+        setPanicMode(profile.panicMode)
+        setQuoteLength(profile.quoteLength)
+
+        BlissProfileManager.setActiveProfile(profile.name)
+        activeProfileName = profile.name
+
+        // Refresh after a delay to let commands finish
         Task {
-            let scriptPaths = [
-                "/usr/local/share/bliss/uninstall.sh",
-                URL(fileURLWithPath: BlissCommand.executablePath())
-                    .deletingLastPathComponent()
-                    .deletingLastPathComponent()
-                    .appendingPathComponent("scripts/uninstall.sh").path
-            ]
-            for path in scriptPaths {
-                if FileManager.default.fileExists(atPath: path) {
-                    let result = await Task.detached {
-                        let process = Process()
-                        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-                        process.arguments = [
-                            "-e",
-                            "do shell script \"/bin/bash '\(path)'\" with administrator privileges"
-                        ]
-                        let outPipe = Pipe()
-                        let errPipe = Pipe()
-                        process.standardOutput = outPipe
-                        process.standardError = errPipe
-                        do {
-                            try process.run()
-                            process.waitUntilExit()
-                        } catch {
-                            return CommandResult(code: 127, stdout: "", stderr: error.localizedDescription)
-                        }
-                        let out = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                        let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                        return CommandResult(code: process.terminationStatus, stdout: out, stderr: err)
-                    }.value
-                    if result.code == 0 {
-                        errorMessage = nil
-                        output = "Uninstall complete."
-                    } else {
-                        errorMessage = "Uninstall failed: \(result.combinedOutput)"
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            refreshAll()
+        }
+    }
+
+    func deleteProfile(name: String) {
+        BlissProfileManager.delete(name: name)
+        if activeProfileName == name {
+            BlissProfileManager.setActiveProfile(nil)
+            activeProfileName = nil
+        }
+        loadProfiles()
+    }
+
+    func deleteProfileAndSchedules(name: String) {
+        // Remove schedules referencing this config
+        var current = BlissScheduleManager.load()
+        current.removeAll { $0.configName == name }
+        BlissScheduleManager.save(current)
+        schedules = current
+        deleteProfile(name: name)
+    }
+
+    // MARK: - Schedules
+
+    func addSchedule(_ entry: BlissScheduleEntry) {
+        var current = BlissScheduleManager.load()
+        current.append(entry)
+        BlissScheduleManager.save(current)
+        schedules = current
+    }
+
+    func updateSchedule(_ entry: BlissScheduleEntry) {
+        var current = BlissScheduleManager.load()
+        if let idx = current.firstIndex(where: { $0.id == entry.id }) {
+            current[idx] = entry
+        }
+        BlissScheduleManager.save(current)
+        schedules = current
+    }
+
+    func deleteSchedule(id: UUID) {
+        var current = BlissScheduleManager.load()
+        current.removeAll { $0.id == id }
+        BlissScheduleManager.save(current)
+        schedules = current
+    }
+
+    private func checkScheduledSessions() {
+        guard !isSessionActive else { return }
+
+        let cal = Calendar.current
+        let now = Date()
+        let weekday = cal.component(.weekday, from: now)  // 1=Sun
+        let hour = cal.component(.hour, from: now)
+        let minute = cal.component(.minute, from: now)
+
+        for entry in schedules where entry.enabled {
+            guard entry.days.contains(weekday),
+                  entry.hour == hour,
+                  entry.minute == minute else { continue }
+
+            // Prevent double-fire within same minute
+            if lastTriggeredScheduleID == entry.id && lastTriggeredMinute == minute {
+                continue
+            }
+
+            // Find and apply the config
+            if let profile = profiles.first(where: { $0.name == entry.configName }) {
+                applyProfile(profile)
+            }
+            minutesInput = "\(entry.durationMinutes)"
+            startSession()
+            lastTriggeredScheduleID = entry.id
+            lastTriggeredMinute = minute
+            break
+        }
+    }
+
+    func runRepair() {
+        Task {
+            let blissPath = BlissCommand.executablePath()
+            let result = await Task.detached {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                process.arguments = [
+                    "-e",
+                    "do shell script \"\(blissPath) repair\" with administrator privileges"
+                ]
+                let outPipe = Pipe()
+                let errPipe = Pipe()
+                process.standardOutput = outPipe
+                process.standardError = errPipe
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                } catch {
+                    return CommandResult(code: 127, stdout: "", stderr: error.localizedDescription)
+                }
+                let out = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                return CommandResult(code: process.terminationStatus, stdout: out, stderr: err)
+            }.value
+            if result.code == 0 {
+                errorMessage = nil
+                output = "Repair complete."
+                refreshAll()
+            } else {
+                errorMessage = "Repair failed: \(result.combinedOutput)"
+            }
+        }
+    }
+
+    func runUninstall() async -> Bool {
+        // Build candidate paths. The CLI binary is often a symlink
+        // (e.g. /usr/local/bin/bliss -> /Users/.../bliss/build/bliss),
+        // so resolve the symlink to find the source tree.
+        let rawPath = BlissCommand.executablePath()
+        let resolvedPath = (try? FileManager.default.destinationOfSymbolicLink(atPath: rawPath)) ?? rawPath
+        let scriptPaths = [
+            "/usr/local/share/bliss/uninstall.sh",
+            URL(fileURLWithPath: resolvedPath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("scripts/uninstall.sh").path,
+            URL(fileURLWithPath: rawPath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("scripts/uninstall.sh").path,
+        ]
+        for path in scriptPaths {
+            if FileManager.default.fileExists(atPath: path) {
+                let result = await Task.detached {
+                    let process = Process()
+                    process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                    process.arguments = [
+                        "-e",
+                        "do shell script \"/bin/bash '\(path)'\" with administrator privileges"
+                    ]
+                    let outPipe = Pipe()
+                    let errPipe = Pipe()
+                    process.standardOutput = outPipe
+                    process.standardError = errPipe
+                    do {
+                        try process.run()
+                        process.waitUntilExit()
+                    } catch {
+                        return CommandResult(code: 127, stdout: "", stderr: error.localizedDescription)
                     }
-                    return
+                    let out = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                    let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                    return CommandResult(code: process.terminationStatus, stdout: out, stderr: err)
+                }.value
+                if result.code == 0 {
+                    errorMessage = nil
+                    output = "Uninstall complete."
+                    return true
+                } else {
+                    errorMessage = "Uninstall failed: \(result.combinedOutput)"
+                    return false
                 }
             }
-            errorMessage = "Uninstall script not found."
         }
+        errorMessage = "Uninstall script not found."
+        return false
     }
 }

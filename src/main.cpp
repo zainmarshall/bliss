@@ -925,6 +925,18 @@ static bool is_launchd_job_loaded(){
     return rc == 0;
 }
 
+static bool write_end_time_seconds(int seconds){
+    auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    long long end_time = static_cast<long long>(now) + static_cast<long long>(seconds);
+    std::ofstream out(kEndTimePath, std::ios::trunc);
+    if(!out.is_open()){
+        std::cout << "[error] unable to write " << kEndTimePath << " (try running with sudo)\n";
+        return false;
+    }
+    out << end_time << "\n";
+    return true;
+}
+
 static bool write_end_time(int minutes){
     auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     long long end_time = static_cast<long long>(now) + static_cast<long long>(minutes) * 60;
@@ -967,21 +979,37 @@ int main(int argc, char* argv[]){
             }
         }
         if(argc < 3){
-            std::cout << "[error] start requires <minutes>\n";
+            std::cout << "[error] start requires <minutes> or <seconds> --seconds\n";
             print_usage();
             return 1;
         }
-        int minutes = 0;
-        if(!parse_minutes(argv[2], minutes)){
-            std::cout << "[error] invalid minutes; use 1-1440\n";
-            return 1;
+        // Check for --seconds flag
+        bool use_seconds = false;
+        for(int i = 3; i < argc; i++){
+            if(std::string(argv[i]) == "--seconds") use_seconds = true;
         }
-        if(!is_root){
-            std::string cfg = get_config_path();
-            if(!send_to_root_helper("start " + std::to_string(minutes) + " " + cfg)){
+        int total_seconds = 0;
+        if(use_seconds){
+            if(!parse_seconds(argv[2], total_seconds)){
+                std::cout << "[error] invalid seconds; use 1-86400\n";
                 return 1;
             }
-            std::cout << "lockdown started for " << minutes << " minutes\n";
+        } else {
+            int minutes = 0;
+            if(!parse_minutes(argv[2], minutes)){
+                std::cout << "[error] invalid minutes; use 1-1440\n";
+                return 1;
+            }
+            total_seconds = minutes * 60;
+        }
+        // Convert to minutes for display/logging
+        int display_minutes = (total_seconds + 59) / 60;
+        if(!is_root){
+            std::string cfg = get_config_path();
+            if(!send_to_root_helper("start " + std::to_string(total_seconds) + " --seconds " + cfg)){
+                return 1;
+            }
+            std::cout << "lockdown started for " << total_seconds << " seconds (" << display_minutes << "m)\n";
             std::vector<std::string> domains;
             load_block_list(domains);
             std::cout << "blocking " << domains.size() << " domains\n";
@@ -997,7 +1025,7 @@ int main(int argc, char* argv[]){
         if(!apply_hosts_block()){
             return 1;
         }
-        if(!write_end_time(minutes)){
+        if(!write_end_time_seconds(total_seconds)){
             return 1;
         }
         if(is_launchd_job_loaded()){
@@ -1011,13 +1039,13 @@ int main(int argc, char* argv[]){
                 std::cout << "[error] unable to find blissd (install or use absolute path)\n";
                 return 1;
             }
-            if(!install_launchd_job(minutes, blissd_path)){
+            if(!install_launchd_job(display_minutes, blissd_path)){
                 return 1;
             }
         }
         std::vector<std::string> domains;
         load_block_list(domains);
-        std::cout << "lockdown started for " << minutes << " minutes\n";
+        std::cout << "lockdown started for " << total_seconds << " seconds (" << display_minutes << "m)\n";
         std::cout << "blocking " << domains.size() << " domains\n";
         return 0;
     }
@@ -1091,7 +1119,7 @@ int main(int argc, char* argv[]){
         unload_launchd_job();
         remove_end_time();
         remove_hosts_block();
-        remove_firewall_block();
+        deep_remove_firewall_block();
         drop_web_states();
         std::cout << "repaired and flushed\n";
         return 0;
