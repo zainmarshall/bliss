@@ -4,8 +4,8 @@ Bliss is a macOS focus lock that blocks distracting websites, force-closes apps,
 # MACOS Only. To all Windows and Linux users of Flavortown, please watch the following video demo to get a full understanding of the app!
 
 ## Video Demo
-# NOTE TO ZAIN TO UPDATE THIS VIDEO BEFORE SHIPPING
-https://github.com/user-attachments/assets/2810f783-6585-4e67-8919-b054ea23d219
+https://github.com/user-attachments/assets/c681f4bc-3413-435e-bcb4-4d17c81feb56
+
 
 
 ## What it does
@@ -22,7 +22,7 @@ https://github.com/user-attachments/assets/2810f783-6585-4e67-8919-b054ea23d219
 
 ```bash
 curl -fsSL \
-  "https://github.com/zainmarshall/bliss/releases/download/v0.3.0/bliss-macos-universal.zip" \
+  "https://github.com/zainmarshall/bliss/releases/download/v0.4.0/bliss-macos-universal.zip" \
   -o /tmp/bliss.zip && \
   rm -rf /tmp/bliss && mkdir -p /tmp/bliss && \
   unzip -q /tmp/bliss.zip -d /tmp/bliss && \
