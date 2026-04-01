@@ -1,3 +1,5 @@
+#ifdef __APPLE__
+
 #include "hosts_block.h"
 
 #include <arpa/inet.h>
@@ -251,3 +253,5 @@ void drop_web_states(){
     std::system("/sbin/pfctl -k 0.0.0.0/0 -p tcp -p 443 >/dev/null 2>&1");
     std::system("/sbin/pfctl -k 0.0.0.0/0 -p udp -p 443 >/dev/null 2>&1");
 }
+
+#endif // __APPLE__

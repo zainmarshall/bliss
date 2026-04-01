@@ -1,0 +1,38 @@
+{
+  "name": "bliss",
+  "version": "1.0.0",
+  "description": "Bliss is a macOS focus lock that blocks distracting websites, force-closes apps, and makes you solve a real challenge to escape early. Native SwiftUI GUI with scheduling, a menubar countdown, and a CLI for power users.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "tauri": "cargo tauri"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zainmarshall/bliss.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/zainmarshall/bliss/issues"
+  },
+  "homepage": "https://github.com/zainmarshall/bliss#readme",
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.0.0",
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-shell": "^2.3.5",
+    "esbuild": "^0.27.4",
+    "svelte": "^5.55.1",
+    "vite": "^8.0.3"
+  },
+  "dependencies": {
+    "@tauri-apps/plugin-dialog": "^2.6.0",
+    "lucide-svelte": "^1.0.1"
+  }
+}

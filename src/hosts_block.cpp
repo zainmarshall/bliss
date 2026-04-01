@@ -450,6 +450,7 @@ bool remove_block_app_entries(const std::vector<std::string>& entries){
 }
 
 static void flush_dns(){
+#ifdef __APPLE__
     std::system("/usr/bin/dscacheutil -flushcache");
     std::system("/usr/bin/killall -HUP mDNSResponder");
     // On macOS 15+ the HUP signal may not flush the resolver cache.
@@ -457,13 +458,21 @@ static void flush_dns(){
     std::system("/usr/bin/killall mDNSResponder >/dev/null 2>&1");
     // Also try the launchctl restart path.
     std::system("/bin/launchctl kickstart -k system/com.apple.mDNSResponder >/dev/null 2>&1");
+#elif defined(__linux__)
+    // systemd-resolved is the most common DNS cache on modern Linux.
+    std::system("resolvectl flush-caches >/dev/null 2>&1");
+    // Fallback for older systemd or nscd-based setups.
+    std::system("systemd-resolve --flush-caches >/dev/null 2>&1");
+    std::system("nscd -i hosts >/dev/null 2>&1");
+#endif
 }
 
 static bool process_running(const std::string& name){
-    std::string cmd = std::string("/usr/bin/pgrep -x \"") + name + "\" >/dev/null 2>&1";
+    std::string cmd = std::string("pgrep -x \"") + name + "\" >/dev/null 2>&1";
     return std::system(cmd.c_str()) == 0;
 }
 
+#ifdef __APPLE__
 static uid_t get_console_uid(){
     struct stat st{};
     if(stat("/dev/console", &st) == 0){
@@ -484,12 +493,14 @@ static void reopen_app_as_user(const std::string& name){
     std::string fallback = std::string("/usr/bin/open -a \"") + name + "\" >/dev/null 2>&1";
     std::system(fallback.c_str());
 }
+#endif
 
 void kill_browser_apps(){
     std::vector<std::string> extra;
     if(!load_browser_list(extra) || extra.empty()){
         return;
     }
+#ifdef __APPLE__
     std::vector<std::string> reopen;
     for(const auto& name : extra){
         if(name.find("Helper") != std::string::npos){
@@ -499,13 +510,16 @@ void kill_browser_apps(){
             reopen.push_back(name);
         }
     }
+#endif
     for(const auto& name : extra){
-        std::string cmd = std::string("/usr/bin/pkill -x \"") + name + "\" >/dev/null 2>&1";
+        std::string cmd = std::string("pkill -x \"") + name + "\" >/dev/null 2>&1";
         std::system(cmd.c_str());
     }
+#ifdef __APPLE__
     for(const auto& name : reopen){
         reopen_app_as_user(name);
     }
+#endif
 }
 
 bool apply_hosts_block(){

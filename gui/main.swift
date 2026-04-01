@@ -80,7 +80,7 @@ class MenuBarTimer: ObservableObject {
 
     /// Label shown in the menubar
     var menuBarLabel: String {
-        if isSessionActive, let range = title.range(of: #"\d{2}:\d{2}"#, options: .regularExpression) {
+        if isSessionActive, let range = title.range(of: #"\d{2}:\d{2}:\d{2}"#, options: .regularExpression) {
             return "Bliss \(title[range])"
         }
         return "Bliss"
@@ -108,9 +108,10 @@ class MenuBarTimer: ObservableObject {
         let remaining = max(0, endTime - now)
         if remaining > 0 {
             isSessionActive = true
-            let minutes = remaining / 60
+            let hours = remaining / 3600
+            let minutes = (remaining % 3600) / 60
             let secs = remaining % 60
-            title = String(format: "Bliss %02d:%02d", minutes, secs)
+            title = String(format: "Bliss %02d:%02d:%02d", hours, minutes, secs)
         } else {
             title = "Bliss"
             isSessionActive = false
