@@ -52,6 +52,7 @@
     apps = await invoke("config_app_list");
     quoteLength = await invoke("config_quote_length_get");
     panicMode = await invoke("config_panic_mode_get");
+    loadPanicConfigs();
     await loadProfiles();
   }
 
@@ -194,6 +195,32 @@
     cyan: "#06b6d4", teal: "#14b8a6",
   };
   function profileColor(name) { return colorMap[name] || colorMap.pink; }
+
+  let panicConfigs = $state({});
+
+  function loadPanicConfigs() {
+    try {
+      panicConfigs = JSON.parse(localStorage.getItem("bliss_panic_configs") || "{}");
+    } catch { panicConfigs = {}; }
+  }
+
+  function getPanicConfig(key) {
+    let defaults = {
+      minesweeper_size: "medium",
+      wordle_difficulty: "easy",
+      "2048_difficulty": "medium",
+      sudoku_difficulty: "medium",
+      simon_difficulty: "medium",
+    };
+    return panicConfigs[key] || defaults[key];
+  }
+
+  function setPanicConfig(key, value) {
+    if (sessionActive) return;
+    panicConfigs[key] = value;
+    panicConfigs = { ...panicConfigs };
+    localStorage.setItem("bliss_panic_configs", JSON.stringify(panicConfigs));
+  }
 
   function websiteKeydown(e) {
     if (e.key === "Enter") addWebsite();
@@ -395,8 +422,37 @@
               </div>
               <select bind:value={panicMode} onchange={(e) => setPanicMode(e.target.value)} disabled={sessionActive}>
                 <option value="typing">Typing</option>
+                <option value="minesweeper">Minesweeper</option>
+                <option value="wordle">Wordle</option>
+                <option value="2048">2048</option>
+                <option value="sudoku">Sudoku</option>
+                <option value="simon">Simon Says</option>
+                <option value="pipes">Pipes</option>
+                <option value="competitive">Competitive Programming</option>
               </select>
             </div>
+          </div>
+
+          <div class="form-group">
+            <p class="mode-desc">
+              {#if panicMode === "typing"}
+                Type a random quote with 100% accuracy to unlock.
+              {:else if panicMode === "minesweeper"}
+                Clear a minesweeper board without hitting a mine.
+              {:else if panicMode === "wordle"}
+                Guess the 5-letter word within 6 tries.
+              {:else if panicMode === "2048"}
+                Slide tiles and reach 2048 to unlock.
+              {:else if panicMode === "sudoku"}
+                Solve a 9x9 Sudoku puzzle to unlock.
+              {:else if panicMode === "simon"}
+                Memorize and repeat a color sequence.
+              {:else if panicMode === "pipes"}
+                Draw paths connecting matching dots. Fill every cell.
+              {:else if panicMode === "competitive"}
+                Solve a CSES programming problem to unlock.
+              {/if}
+            </p>
           </div>
 
           {#if panicMode === "typing"}
@@ -411,6 +467,118 @@
                 {#each ["short", "medium", "long", "huge"] as len}
                   <button class:seg-active={quoteLength === len} onclick={() => setQuoteLength(len)} disabled={sessionActive}>
                     {len[0].toUpperCase() + len.slice(1)}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {:else if panicMode === "minesweeper"}
+            <div class="form-group">
+              <div class="field-row">
+                <div class="field-label">
+                  <span>Grid Size</span>
+                  <span class="field-desc">Board dimensions and mine count</span>
+                </div>
+              </div>
+              <div class="segmented">
+                {#each [["small", "Small (8x8)"], ["medium", "Medium (10x10)"], ["large", "Large (14x14)"]] as [val, label]}
+                  <button class:seg-active={getPanicConfig("minesweeper_size") === val} onclick={() => setPanicConfig("minesweeper_size", val)} disabled={sessionActive}>
+                    {label}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {:else if panicMode === "wordle"}
+            <div class="form-group">
+              <div class="field-row">
+                <div class="field-label">
+                  <span>Difficulty</span>
+                  <span class="field-desc">Number of guesses allowed</span>
+                </div>
+              </div>
+              <div class="segmented">
+                {#each [["easy", "Easy (6)"], ["medium", "Medium (5)"], ["hard", "Hard (4)"]] as [val, label]}
+                  <button class:seg-active={getPanicConfig("wordle_difficulty") === val} onclick={() => setPanicConfig("wordle_difficulty", val)} disabled={sessionActive}>
+                    {label}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {:else if panicMode === "2048"}
+            <div class="form-group">
+              <div class="field-row">
+                <div class="field-label">
+                  <span>Target</span>
+                  <span class="field-desc">Tile value you must reach</span>
+                </div>
+              </div>
+              <div class="segmented">
+                {#each [["easy", "128"], ["medium", "512"], ["hard", "2048"]] as [val, label]}
+                  <button class:seg-active={getPanicConfig("2048_difficulty") === val} onclick={() => setPanicConfig("2048_difficulty", val)} disabled={sessionActive}>
+                    {label}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {:else if panicMode === "sudoku"}
+            <div class="form-group">
+              <div class="field-row">
+                <div class="field-label">
+                  <span>Difficulty</span>
+                  <span class="field-desc">Number of pre-filled clues</span>
+                </div>
+              </div>
+              <div class="segmented">
+                {#each [["easy", "Easy (30)"], ["medium", "Medium (25)"], ["hard", "Hard (20)"]] as [val, label]}
+                  <button class:seg-active={getPanicConfig("sudoku_difficulty") === val} onclick={() => setPanicConfig("sudoku_difficulty", val)} disabled={sessionActive}>
+                    {label}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {:else if panicMode === "simon"}
+            <div class="form-group">
+              <div class="field-row">
+                <div class="field-label">
+                  <span>Difficulty</span>
+                  <span class="field-desc">Grid size and sequence length</span>
+                </div>
+              </div>
+              <div class="segmented">
+                {#each [["easy", "Easy (3x3, 5)"], ["medium", "Medium (4x4, 7)"], ["hard", "Hard (5x5, 10)"]] as [val, label]}
+                  <button class:seg-active={getPanicConfig("simon_difficulty") === val} onclick={() => setPanicConfig("simon_difficulty", val)} disabled={sessionActive}>
+                    {label}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {:else if panicMode === "pipes"}
+            <div class="form-group">
+              <div class="field-row">
+                <div class="field-label">
+                  <span>Grid Size</span>
+                  <span class="field-desc">Board dimensions and flow count</span>
+                </div>
+              </div>
+              <div class="segmented">
+                {#each [["small", "Small (5x5)"], ["medium", "Medium (7x7)"], ["large", "Large (9x9)"]] as [val, label]}
+                  <button class:seg-active={getPanicConfig("pipes_size") === val} onclick={() => setPanicConfig("pipes_size", val)} disabled={sessionActive}>
+                    {label}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {:else if panicMode === "competitive"}
+            <div class="form-group">
+              <div class="field-row">
+                <div class="field-label">
+                  <span>Difficulty</span>
+                  <span class="field-desc">CSES problem difficulty</span>
+                </div>
+              </div>
+              <div class="segmented">
+                {#each [["easy", "Easy"], ["medium", "Medium"], ["hard", "Hard"]] as [val, label]}
+                  <button class:seg-active={getPanicConfig("cp_difficulty") === val} onclick={() => setPanicConfig("cp_difficulty", val)} disabled={sessionActive}>
+                    {label}
                   </button>
                 {/each}
               </div>
@@ -944,5 +1112,12 @@
   .uninstall-btn:disabled {
     opacity: 0.3;
     cursor: not-allowed;
+  }
+
+  .mode-desc {
+    font-size: 12px;
+    color: #777;
+    margin: 0;
+    line-height: 1.4;
   }
 </style>

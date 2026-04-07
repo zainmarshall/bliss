@@ -3,10 +3,18 @@
   import { invoke } from "@tauri-apps/api/core";
   import { Timer, Settings as SettingsIcon } from "lucide-svelte";
   import TypingChallenge from "./TypingChallenge.svelte";
+  import MinesweeperChallenge from "./MinesweeperChallenge.svelte";
+  import WordleChallenge from "./WordleChallenge.svelte";
+  import Game2048Challenge from "./Game2048Challenge.svelte";
+  import SudokuChallenge from "./SudokuChallenge.svelte";
+  import SimonSaysChallenge from "./SimonSaysChallenge.svelte";
+  import PipesChallenge from "./PipesChallenge.svelte";
+  import CompetitiveChallenge from "./CompetitiveChallenge.svelte";
   import Settings from "./Settings.svelte";
 
   let view = $state("session"); // "session" | "panic"
   let tab = $state("session"); // "session" | "settings"
+  let panicMode = $state("typing");
   let sessionActive = $state(false);
   let remaining = $state("00:00:00");
   let remainingSecs = $state(0);
@@ -90,7 +98,10 @@
     }
   }
 
-  function openPanic() {
+  async function openPanic() {
+    try {
+      panicMode = await invoke("config_panic_mode_get");
+    } catch (e) {}
     view = "panic";
   }
 
@@ -112,7 +123,23 @@
 
 <div class="app">
   {#if view === "panic"}
-    <TypingChallenge onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
+    {#if panicMode === "minesweeper"}
+      <MinesweeperChallenge onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
+    {:else if panicMode === "wordle"}
+      <WordleChallenge onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
+    {:else if panicMode === "2048"}
+      <Game2048Challenge onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
+    {:else if panicMode === "sudoku"}
+      <SudokuChallenge onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
+    {:else if panicMode === "simon"}
+      <SimonSaysChallenge onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
+    {:else if panicMode === "pipes"}
+      <PipesChallenge onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
+    {:else if panicMode === "competitive"}
+      <CompetitiveChallenge onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
+    {:else}
+      <TypingChallenge onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
+    {/if}
   {:else}
     <div class="tab-bar">
       <button class="tab" class:active={tab === "session"} onclick={() => (tab = "session")}>
@@ -140,7 +167,7 @@
           <p class="status" class:active={sessionActive}>{statusLabel}</p>
 
           {#if sessionActive}
-            <div class="timer" class:last-minute={lastMinute}>{remaining}</div>
+            <div class="timer">{remaining}</div>
             <button class="panic-btn" onclick={openPanic}>Panic</button>
           {:else}
             <div class="timer-input">
@@ -306,15 +333,6 @@
     transition: color 0.3s;
   }
 
-  .timer.last-minute {
-    color: #fb923c;
-    animation: pulse 0.8s ease-in-out infinite alternate;
-  }
-
-  @keyframes pulse {
-    from { opacity: 1; }
-    to { opacity: 0.6; }
-  }
 
   .timer-input {
     display: flex;

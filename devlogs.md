@@ -104,3 +104,84 @@ The SwiftUI GUI was ~8,900 lines and macOS-only. This session sets up the Tauri 
 
 **Next up:** Tab navigation (Session/Settings), blocked sites/apps config UI, and menubar tray with countdown.
 
+---
+---
+
+# v1.0.0 Devlog III: Settings & Configs
+
+**Full settings panel with config profiles, app icons, file pickers, and Lucide icons.**
+
+---
+
+## What changed
+
+---
+
+### 1. Settings panel
+![Feature](https://img.shields.io/badge/Feature-Settings-blue?style=for-the-badge)
+
+- Sidebar + detail layout matching the SwiftUI version. Seven sections in the same order: Configs, Panic Challenge, Blocked Websites, Blocked Apps, Browsers, Troubleshooting, Uninstall.
+- Icons from Lucide (Folder, ShieldAlert, Globe, LayoutGrid, Compass, Wrench, Trash2) instead of SF Symbols.
+- Blocked websites has preset packs (Social Media, Entertainment, News, Gaming, Shopping) that toggle green when active. Apps and browsers show real icons extracted from .app bundles via `sips`.
+
+---
+
+### 2. Config profiles
+![Feature](https://img.shields.io/badge/Feature-Configs-purple?style=for-the-badge)
+
+- Save current websites/apps/browsers/panic settings as a named config. Configs stored as JSON in `~/.config/bliss/profiles/`.
+- Apply swaps everything at once - clears current config and loads the profile's. Active config highlighted with color dot.
+- Simpler flow than SwiftUI - no color picker, just save/apply/delete.
+
+---
+
+### 3. Native file pickers
+![System](https://img.shields.io/badge/System-Dialog-green?style=for-the-badge)
+
+- "Add App..." and "Add Browser..." open native macOS file dialogs via `tauri-plugin-dialog`, filtered to `.app` bundles. Same UX as the SwiftUI `fileImporter`.
+- App icons extracted server-side in Rust: reads `CFBundleIconFile` from Info.plist, converts `.icns` to 64x64 PNG with `sips`, sends base64 to the frontend. Browser icons resolved via `mdfind` bundle ID lookup.
+
+---
+
+**Next up:** Schedule tab, statistics tab with activity heatmap, and system tray menubar.
+
+---
+---
+
+# v1.0.0 Devlog IV: All Panic Modes
+
+**Ported all 8 panic challenges from SwiftUI to Tauri - plus a mini IDE for competitive programming.**
+
+---
+
+## What changed
+
+---
+
+### 1. Game challenges
+![Feature](https://img.shields.io/badge/Feature-Panic_Games-red?style=for-the-badge)
+
+- Minesweeper (flood-fill, first-click safe, right-click flags), Wordle (color-coded feedback, on-screen keyboard, shake on invalid), 2048 (arrow key sliding, merge logic, classic tile colors), Sudoku (backtracking generator, conflict highlighting, numpad + keyboard), Simon Says (animated sequence playback, color grid, replay on wrong).
+- Pipes uses the same Hamiltonian path + flood-fill partitioning algorithm as the Swift version. Drag-to-draw with SVG overlay, backtracking, falls back to snake paths if random gen fails.
+
+---
+
+### 2. Competitive programming IDE
+![Feature](https://img.shields.io/badge/Feature-CP_IDE-purple?style=for-the-badge)
+
+- Split-pane layout: problem statement (with LaTeX math rendering) on the left, code editor on the right.
+- Syntax highlighting for C++, Python, Java - keywords, strings, comments, numbers all colored. Line numbers in gutter, tab inserts spaces.
+- Rust backend loads problems from `~/.config/bliss/problems/problems.json`, compiles and runs code against test cases, diffs output. Supports clang++, python3, javac.
+
+---
+
+### 3. Settings and config
+![Feature](https://img.shields.io/badge/Feature-Settings-blue?style=for-the-badge)
+
+- All 8 modes in the panic dropdown with descriptions. Each mode has its own difficulty/size config via segmented controls (grid size, guess count, target tile, clue count, sequence length, flow count, problem difficulty).
+- Game configs stored in localStorage, panic mode stored in `~/.config/bliss/panic_mode.txt`. Removed the orange pulsating last-minute timer animation.
+
+---
+
+**Next up:** Schedule tab, statistics, and system tray.
+

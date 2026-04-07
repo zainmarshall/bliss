@@ -552,6 +552,155 @@ fn config_quote_length_get() -> String {
     read_quote_length(&std::env::var("HOME").unwrap_or_default())
 }
 
+// Competitive Programming commands
+
+#[derive(Serialize, serde::Deserialize, Clone)]
+struct CPTestCase {
+    input: String,
+    output: String,
+}
+
+#[derive(Serialize, serde::Deserialize, Clone)]
+struct CPProblem {
+    id: String,
+    title: String,
+    statement: String,
+    url: String,
+    difficulty: String,
+    input: Option<String>,
+    output: Option<String>,
+    constraints: Option<String>,
+    tests: Vec<CPTestCase>,
+}
+
+#[derive(Serialize)]
+struct CPJudgeResult {
+    passed: bool,
+    summary: String,
+}
+
+#[tauri::command]
+fn cp_load_problems() -> Vec<CPProblem> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let paths = vec![
+        format!("{home}/.config/bliss/problems/problems.json"),
+        "/usr/local/share/bliss/problems/problems.json".to_string(),
+        "problems/problems.json".to_string(),
+    ];
+    for p in paths {
+        if let Ok(data) = fs::read_to_string(&p) {
+            if let Ok(problems) = serde_json::from_str::<Vec<CPProblem>>(&data) {
+                if !problems.is_empty() {
+                    return problems;
+                }
+            }
+        }
+    }
+    Vec::new()
+}
+
+#[tauri::command]
+fn cp_run_judge(problem: CPProblem, language: String, source_code: String) -> CPJudgeResult {
+    let temp_dir = std::env::temp_dir().join(format!("bliss_cp_{}", std::process::id()));
+    let _ = fs::create_dir_all(&temp_dir);
+
+    let (source_file, compile_cmd, run_cmd) = match language.as_str() {
+        "python3" => ("solution.py", None, vec!["python3", "solution.py"]),
+        "java17" => ("Main.java", Some(vec!["javac", "Main.java"]), vec!["java", "-cp", ".", "Main"]),
+        _ => ("main.cpp", Some(vec!["clang++", "-std=c++17", "-O2", "main.cpp", "-o", "solution_bin"]), vec!["./solution_bin"]),
+    };
+
+    let source_path = temp_dir.join(source_file);
+    if fs::write(&source_path, &source_code).is_err() {
+        let _ = fs::remove_dir_all(&temp_dir);
+        return CPJudgeResult { passed: false, summary: "Failed to write source file.".into() };
+    }
+
+    if let Some(compile) = compile_cmd {
+        let result = Command::new(compile[0])
+            .args(&compile[1..])
+            .current_dir(&temp_dir)
+            .output();
+        match result {
+            Ok(output) if !output.status.success() => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let msg = if stderr.is_empty() { stdout } else { stderr };
+                let _ = fs::remove_dir_all(&temp_dir);
+                return CPJudgeResult {
+                    passed: false,
+                    summary: format!("Compile failed:\n{}", &msg[..msg.len().min(1000)]),
+                };
+            }
+            Err(e) => {
+                let _ = fs::remove_dir_all(&temp_dir);
+                return CPJudgeResult { passed: false, summary: format!("Compiler not found: {e}") };
+            }
+            _ => {}
+        }
+    }
+
+    for (idx, test) in problem.tests.iter().enumerate() {
+        use std::io::Write;
+        let mut child = match Command::new(run_cmd[0])
+            .args(&run_cmd[1..])
+            .current_dir(&temp_dir)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = fs::remove_dir_all(&temp_dir);
+                return CPJudgeResult { passed: false, summary: format!("Failed to run: {e}") };
+            }
+        };
+
+        if let Some(stdin) = child.stdin.as_mut() {
+            let _ = stdin.write_all(test.input.as_bytes());
+        }
+
+        let output = match child.wait_with_output() {
+            Ok(o) => o,
+            Err(e) => {
+                let _ = fs::remove_dir_all(&temp_dir);
+                return CPJudgeResult { passed: false, summary: format!("Runtime error: {e}") };
+            }
+        };
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let _ = fs::remove_dir_all(&temp_dir);
+            return CPJudgeResult {
+                passed: false,
+                summary: format!("Runtime error on test {}:\n{}", idx + 1, &stderr[..stderr.len().min(500)]),
+            };
+        }
+
+        let actual = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let expected = test.output.trim().to_string();
+        if actual != expected {
+            let _ = fs::remove_dir_all(&temp_dir);
+            return CPJudgeResult {
+                passed: false,
+                summary: format!(
+                    "Wrong answer on test {}\nExpected:\n{}\nGot:\n{}",
+                    idx + 1,
+                    &expected[..expected.len().min(300)],
+                    &actual[..actual.len().min(300)]
+                ),
+            };
+        }
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+    CPJudgeResult {
+        passed: true,
+        summary: format!("All tests passed ({}/{}).", problem.tests.len(), problem.tests.len()),
+    }
+}
+
 // Profile / Config commands
 
 #[derive(Serialize, serde::Deserialize, Clone)]
@@ -745,6 +894,8 @@ pub fn run() {
             config_quotes_set,
             config_panic_mode_get,
             config_panic_mode_set,
+            cp_load_problems,
+            cp_run_judge,
             config_quote_length_get,
             profile_list,
             profile_active,
