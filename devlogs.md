@@ -150,38 +150,34 @@ The SwiftUI GUI was ~8,900 lines and macOS-only. This session sets up the Tauri 
 
 # v1.0.0 Devlog IV: All Panic Modes
 
-**Ported all 8 panic challenges from SwiftUI to Tauri - plus a mini IDE for competitive programming.**
+**All 8 SwiftUI panic challenges ported to Tauri.**
 
 ---
 
-## What changed
-
----
-
-### 1. Game challenges
+### Games
 ![Feature](https://img.shields.io/badge/Feature-Panic_Games-red?style=for-the-badge)
 
-- Minesweeper (flood-fill, first-click safe, right-click flags), Wordle (color-coded feedback, on-screen keyboard, shake on invalid), 2048 (arrow key sliding, merge logic, classic tile colors), Sudoku (backtracking generator, conflict highlighting, numpad + keyboard), Simon Says (animated sequence playback, color grid, replay on wrong).
-- Pipes uses the same Hamiltonian path + flood-fill partitioning algorithm as the Swift version. Drag-to-draw with SVG overlay, backtracking, falls back to snake paths if random gen fails.
+Minesweeper, Wordle, 2048, Sudoku, Simon Says, and Pipes - all faithfully recreated. Pipes reuses the same Hamiltonian path + flood-fill algorithm with SVG drag-to-draw.
 
 ---
 
-### 2. Competitive programming IDE
+### Competitive programming
 ![Feature](https://img.shields.io/badge/Feature-CP_IDE-purple?style=for-the-badge)
 
-- Split-pane layout: problem statement (with LaTeX math rendering) on the left, code editor on the right.
-- Syntax highlighting for C++, Python, Java - keywords, strings, comments, numbers all colored. Line numbers in gutter, tab inserts spaces.
-- Rust backend loads problems from `~/.config/bliss/problems/problems.json`, compiles and runs code against test cases, diffs output. Supports clang++, python3, javac.
+Split-pane IDE: problem statement with LaTeX math on the left, code editor on the right. Initially wrote a custom regex-based highlighter but it choked on C++ - `#include` was treated as a comment start, leaking raw HTML span tags into the display. Swapped it for CodeMirror 6 with oneDark, which handles C++/Python/Java properly and gives bracket matching and auto-indent for free. Rust backend compiles and judges against test cases.
 
 ---
 
-### 3. Settings and config
+### Config
 ![Feature](https://img.shields.io/badge/Feature-Settings-blue?style=for-the-badge)
 
-- All 8 modes in the panic dropdown with descriptions. Each mode has its own difficulty/size config via segmented controls (grid size, guess count, target tile, clue count, sequence length, flow count, problem difficulty).
-- Game configs stored in localStorage, panic mode stored in `~/.config/bliss/panic_mode.txt`. Removed the orange pulsating last-minute timer animation.
+All 8 modes in the panic dropdown with per-mode difficulty configs (grid size, guess count, target tile, etc). Configs in localStorage, panic mode in `~/.config/bliss/panic_mode.txt`.
 
 ---
 
-**Next up:** Schedule tab, statistics, and system tray.
+**Next up:** Schedule tab, statistics, and system tray.a
+## Changelog
+
+[`c572c3d`](https://github.com/zainmarshall/bliss/commit/c572c3d089b93d0db83d09a14ef0a486753f4752) feat(ui): add all panic mode challenges to Tauri GUI
+
 

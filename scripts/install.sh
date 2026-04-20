@@ -38,15 +38,6 @@ fail() {
   printf "  ${RED}✗${RESET} %s\n" "$1"
 }
 
-progress_bar() {
-  local current=$1 total=$2 width=30
-  local filled=$((current * width / total))
-  local empty=$((width - filled))
-  printf "\r  ${DIM}[${GREEN}%s${DIM}%s${DIM}]${RESET} " \
-    "$(printf '█%.0s' $(seq 1 $filled 2>/dev/null) 2>/dev/null || true)" \
-    "$(printf '░%.0s' $(seq 1 $empty 2>/dev/null) 2>/dev/null || true)"
-}
-
 # ── Header ───────────────────────────────────────────────────────
 printf "\n"
 printf "  ${BOLD}${CYAN}┌──────────────────────────────┐${RESET}\n"
@@ -65,56 +56,23 @@ else
   ok "CLI built"
 fi
 
-# ── Step 2: Build GUI ───────────────────────────────────────────
+# ── Step 2: Build GUI (Tauri) ─────────────────────────────────────
 step "Building GUI"
 
-PREBUILT_APP="${ROOT_DIR}/gui/build/Bliss.app"
-GUI_BUILD_DIR="${ROOT_DIR}/gui/build_install"
-GUI_APP_BUNDLE="${GUI_BUILD_DIR}/Bliss.app"
-GUI_APP_CONTENTS="${GUI_APP_BUNDLE}/Contents"
-GUI_APP_MACOS="${GUI_APP_CONTENTS}/MacOS"
-GUI_APP_RESOURCES="${GUI_APP_CONTENTS}/Resources"
-GUI_APP_BIN="${GUI_APP_MACOS}/Bliss"
+TAURI_APP="${ROOT_DIR}/src-tauri/target/release/bundle/macos/Bliss.app"
 
-if [[ -f "${PREBUILT_APP}/Contents/MacOS/Bliss" ]]; then
-  rm -rf "${GUI_APP_BUNDLE}"
-  mkdir -p "${GUI_BUILD_DIR}"
-  cp -R "${PREBUILT_APP}" "${GUI_APP_BUNDLE}"
-  ok "Using prebuilt GUI"
+if [[ -d "${TAURI_APP}" && -f "${TAURI_APP}/Contents/MacOS/app" ]]; then
+  ok "Using prebuilt Tauri app"
 else
-  info "Compiling SwiftUI app..."
-  mkdir -p "${GUI_APP_MACOS}" "${GUI_APP_RESOURCES}/problems" "${GUI_APP_RESOURCES}/quotes"
-  cp -f "${ROOT_DIR}/problems/"*.json "${GUI_APP_RESOURCES}/problems/" 2>/dev/null || true
-  cp -f "${ROOT_DIR}/quotes/"*.txt "${GUI_APP_RESOURCES}/quotes/" 2>/dev/null || true
-  cp -f "${ROOT_DIR}/gui/AppIcon.icns" "${GUI_APP_RESOURCES}/AppIcon.icns" 2>/dev/null || true
-  /usr/bin/swiftc -parse-as-library -module-cache-path /tmp/bliss_module_cache \
-    -framework SwiftUI -framework AppKit -framework UserNotifications \
-    "${ROOT_DIR}/gui/"*.swift -o "${GUI_APP_BIN}"
-  cat > "${GUI_APP_CONTENTS}/Info.plist" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleDevelopmentRegion</key><string>en</string>
-  <key>CFBundleExecutable</key><string>Bliss</string>
-  <key>CFBundleIdentifier</key><string>com.bliss.gui</string>
-  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-  <key>CFBundleName</key><string>Bliss</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.4.0</string>
-  <key>CFBundleVersion</key><string>1</string>
-  <key>LSMinimumSystemVersion</key><string>13.0</string>
-  <key>CFBundleIconFile</key><string>AppIcon</string>
-  <key>NSHighResolutionCapable</key><true/>
-  <key>CFBundleURLTypes</key>
-  <array><dict>
-    <key>CFBundleURLName</key><string>com.bliss.gui</string>
-    <key>CFBundleURLSchemes</key><array><string>bliss</string></array>
-  </dict></array>
-</dict>
-</plist>
-PLIST
-  ok "GUI built"
+  info "Building Tauri app..."
+  cd "${ROOT_DIR}"
+  npm run tauri build 2>&1 | tail -3
+  if [[ -d "${TAURI_APP}" ]]; then
+    ok "Tauri GUI built"
+  else
+    fail "Tauri build failed"
+    exit 1
+  fi
 fi
 
 # ── Step 3: Install files ───────────────────────────────────────
@@ -134,7 +92,7 @@ sudo bash -c "
   chmod 755 '${SHARE_DIR}/uninstall.sh'
 
   rm -rf /Applications/Bliss.app
-  cp -R '${GUI_APP_BUNDLE}' /Applications/Bliss.app
+  cp -R '${TAURI_APP}' /Applications/Bliss.app
   /usr/bin/codesign --force --sign - /Applications/Bliss.app >/dev/null 2>&1 || true
 "
 ok "CLI binaries  -> ${INSTALL_BIN}/"
@@ -167,7 +125,7 @@ fi
 # ── Step 5: Cleanup ─────────────────────────────────────────────
 step "Finishing up"
 
-# Kill old standalone menubar binary if present (now built into Bliss.app)
+# Kill old SwiftUI menubar binary if present
 if [[ -n "${SUDO_UID:-}" ]]; then
   /bin/launchctl bootout "gui/${SUDO_UID}/com.bliss.menubar" 2>/dev/null || true
 else
@@ -190,5 +148,5 @@ printf "    ${DIM}bliss config website add youtube.com${RESET}\n"
 printf "    ${DIM}bliss config app add${RESET}\n"
 printf "    ${DIM}bliss start 45${RESET}\n"
 printf "\n"
-printf "  ${DIM}Note: Browsers in your config will be closed when a session starts.${RESET}\n"
+printf "  ${DIM}Bliss lives in your menu bar. Close the window to keep it running.${RESET}\n"
 printf "\n"

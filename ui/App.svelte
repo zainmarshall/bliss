@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { Timer, Settings as SettingsIcon } from "lucide-svelte";
+  import { Timer, Settings as SettingsIcon, Calendar, BarChart3 } from "lucide-svelte";
   import TypingChallenge from "./TypingChallenge.svelte";
   import MinesweeperChallenge from "./MinesweeperChallenge.svelte";
   import WordleChallenge from "./WordleChallenge.svelte";
@@ -11,18 +11,27 @@
   import PipesChallenge from "./PipesChallenge.svelte";
   import CompetitiveChallenge from "./CompetitiveChallenge.svelte";
   import Settings from "./Settings.svelte";
+  import Schedule from "./Schedule.svelte";
+  import Stats from "./Stats.svelte";
+  import GuidedSetup from "./GuidedSetup.svelte";
 
-  let view = $state("session"); // "session" | "panic"
-  let tab = $state("session"); // "session" | "settings"
+  let view = $state("loading"); // "loading" | "main" | "panic"
+  let showSetup = $state(false);
+  let tab = $state("session"); // "session" | "schedule" | "stats" | "settings"
   let panicMode = $state("typing");
   let sessionActive = $state(false);
-  let remaining = $state("00:00:00");
+  let remaining = $state("00:00");
   let remainingSecs = $state(0);
   let lastMinute = $state(false);
   let timerDigits = $state([]);
   let errorMsg = $state("");
   let statusLabel = $state("Inactive");
   let pollInterval;
+  let wasActive = false;
+  let notifiedStart = false;
+  let notified5min = false;
+  let sessionStartSecs = 0; // total duration when session started
+  let lastScheduleCheck = "";
 
   let timerDisplay = $derived.by(() => {
     if (sessionActive) return remaining;
@@ -48,18 +57,80 @@
   async function pollStatus() {
     try {
       let status = await invoke("get_session_status");
+      let prevActive = sessionActive;
       sessionActive = status.active;
       remaining = status.remaining;
       remainingSecs = status.remaining_secs;
       statusLabel = status.active ? "Active" : "Inactive";
       lastMinute = status.active && status.remaining_secs > 0 && status.remaining_secs <= 60;
+
+      // Notifications + stats
+      if (status.active && !prevActive && !notifiedStart) {
+        notifiedStart = true;
+        notified5min = false;
+        sessionStartSecs = status.remaining_secs;
+        let mins = Math.ceil(status.remaining_secs / 60);
+        invoke("send_notification", { title: "Focus session started", body: `${mins} minutes of deep work. You've got this.` });
+      }
+      if (status.active && status.remaining_secs <= 300 && status.remaining_secs > 0 && !notified5min) {
+        notified5min = true;
+        invoke("send_notification", { title: "5 minutes remaining", body: "Almost there. Finish strong." });
+      }
+      if (!status.active && prevActive && wasActive) {
+        // Session ended - record actual elapsed time, not planned
+        let elapsedSecs = sessionStartSecs - status.remaining_secs;
+        let elapsedMins = Math.max(1, Math.round(elapsedSecs / 60));
+        invoke("stats_record_session", { minutes: elapsedMins });
+        invoke("send_notification", { title: "Session complete", body: "Nice work. Take a break." });
+        notifiedStart = false;
+        notified5min = false;
+      }
+      wasActive = status.active;
+
+      // Schedule check (every minute)
+      if (!status.active) {
+        checkSchedules();
+      }
     } catch (e) {
       console.error("poll error:", e);
     }
   }
 
+  async function checkSchedules() {
+    let now = new Date();
+    let key = `${now.getHours()}:${now.getMinutes()}`;
+    if (key === lastScheduleCheck) return;
+    lastScheduleCheck = key;
+
+    try {
+      let schedules = await invoke("schedule_list");
+      let dayOfWeek = now.getDay(); // 0=Sun
+      let weekday = dayOfWeek === 0 ? 1 : dayOfWeek + 1; // 1=Sun, 2=Mon, ...
+      let hour = now.getHours();
+      let minute = now.getMinutes();
+
+      for (let s of schedules) {
+        if (!s.enabled) continue;
+        if (!s.days.includes(weekday)) continue;
+        if (s.hour !== hour || s.minute !== minute) continue;
+
+        // Fire this schedule - apply its config then start session
+        let profiles = await invoke("profile_list");
+        let profile = profiles.find(p => p.name === s.configName);
+        if (profile) {
+          await invoke("profile_apply", { profile });
+        }
+        await invoke("start_session", { seconds: s.durationMinutes * 60 });
+        await pollStatus();
+        break;
+      }
+    } catch (e) {
+      console.error("schedule check error:", e);
+    }
+  }
+
   function handleKeydown(e) {
-    if (sessionActive || view !== "session" || tab !== "session") return;
+    if (sessionActive || view !== "main" || tab !== "session") return;
     if (e.key >= "0" && e.key <= "9" && timerDigits.length < 6) {
       timerDigits = [...timerDigits, parseInt(e.key)];
     } else if (e.key === "Backspace") {
@@ -90,7 +161,8 @@
     try {
       let result = await invoke("run_panic");
       if (result.error) return false;
-      view = "session";
+      invoke("play_sound", { name: "success" });
+      view = "main";
       await pollStatus();
       return true;
     } catch (e) {
@@ -109,7 +181,39 @@
     view = "session";
   }
 
-  onMount(() => {
+  function handleSetupComplete() {
+    showSetup = false;
+  }
+
+  onMount(async () => {
+    try {
+      let boot = await invoke("app_boot");
+      showSetup = !boot.setup_complete;
+      if (!boot.setup_complete) tab = "settings";
+
+      // Sync challenge configs to localStorage in one shot
+      const fileToKey = {
+        minesweeper_size: "minesweeper_size",
+        wordle_difficulty: "wordle_difficulty",
+        game2048_difficulty: "2048_difficulty",
+        sudoku_difficulty: "sudoku_difficulty",
+        simon_difficulty: "simon_difficulty",
+        pipes_size: "pipes_size",
+        panic_difficulty: "cp_difficulty",
+      };
+      const defaults = {
+        minesweeper_size: "medium", wordle_difficulty: "easy", "2048_difficulty": "medium",
+        sudoku_difficulty: "medium", simon_difficulty: "medium", pipes_size: "medium", cp_difficulty: "easy",
+      };
+      let configs = { ...defaults };
+      for (let [fileKey, uiKey] of Object.entries(fileToKey)) {
+        if (boot.challenge_configs[fileKey]) {
+          configs[uiKey] = boot.challenge_configs[fileKey];
+        }
+      }
+      localStorage.setItem("bliss_panic_configs", JSON.stringify(configs));
+    } catch {}
+    view = "main";
     pollStatus();
     pollInterval = setInterval(pollStatus, 1000);
   });
@@ -122,7 +226,13 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="app">
-  {#if view === "panic"}
+  {#if showSetup}
+    <GuidedSetup onComplete={handleSetupComplete} />
+  {/if}
+
+  {#if view === "loading"}
+    <div class="loading"></div>
+  {:else if view === "panic"}
     {#if panicMode === "minesweeper"}
       <MinesweeperChallenge onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
     {:else if panicMode === "wordle"}
@@ -142,11 +252,19 @@
     {/if}
   {:else}
     <div class="tab-bar">
-      <button class="tab" class:active={tab === "session"} onclick={() => (tab = "session")}>
+      <button class="tab" class:active={tab === "session"} data-tab="session" onclick={() => (tab = "session")}>
         <Timer size={16} />
         Session
       </button>
-      <button class="tab" class:active={tab === "settings"} onclick={() => (tab = "settings")}>
+      <button class="tab" class:active={tab === "schedule"} data-tab="schedule" onclick={() => (tab = "schedule")}>
+        <Calendar size={16} />
+        Schedule
+      </button>
+      <button class="tab" class:active={tab === "stats"} data-tab="stats" onclick={() => (tab = "stats")}>
+        <BarChart3 size={16} />
+        Stats
+      </button>
+      <button class="tab" class:active={tab === "settings"} data-tab="settings" onclick={() => (tab = "settings")}>
         <SettingsIcon size={16} />
         Settings
       </button>
@@ -196,6 +314,10 @@
           {/if}
         </div>
       </div>
+    {:else if tab === "schedule"}
+      <Schedule {sessionActive} />
+    {:else if tab === "stats"}
+      <Stats />
     {:else}
       <Settings {sessionActive} />
     {/if}
@@ -208,7 +330,7 @@
     padding: 0;
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
     background: #1a1a1a;
-    color: #e0e0e0;
+    color: #f0f0f0;
     user-select: none;
     -webkit-user-select: none;
     overflow: hidden;
@@ -225,6 +347,10 @@
     flex-direction: column;
   }
 
+  .loading {
+    flex: 1;
+  }
+
   .tab-bar {
     display: flex;
     justify-content: center;
@@ -236,10 +362,10 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 20px;
-    font-size: 14px;
+    padding: 8px 16px;
+    font-size: 13px;
     font-weight: 400;
-    color: #888;
+    color: #999;
     background: none;
     border: none;
     border-radius: 8px;
@@ -307,14 +433,14 @@
   .title {
     font-size: 22px;
     font-weight: 600;
-    color: #e0e0e0;
+    color: #f0f0f0;
     margin: 0;
     letter-spacing: -0.3px;
   }
 
   .status {
     font-size: 14px;
-    color: #888;
+    color: #999;
     margin: 0;
   }
 
@@ -327,12 +453,11 @@
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     letter-spacing: 2px;
-    color: #e0e0e0;
+    color: #f0f0f0;
     margin: 12px 0;
     font-family: "SF Pro Rounded", -apple-system, BlinkMacSystemFont, sans-serif;
     transition: color 0.3s;
   }
-
 
   .timer-input {
     display: flex;
@@ -352,7 +477,7 @@
   }
 
   .digit.filled {
-    color: #e0e0e0;
+    color: #f0f0f0;
   }
 
   .colon {

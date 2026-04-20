@@ -37,7 +37,7 @@ bool parse_minutes(const char* s, int& out_minutes){
     char* end = nullptr;
     long val = std::strtol(s, &end, 10);
     if(*end != '\0') return false;
-    if(val <= 0 || val > 1440) return false;
+    if(val <= 0 || val > 10080) return false;
     out_minutes = static_cast<int>(val);
     return true;
 }
@@ -47,7 +47,7 @@ bool parse_seconds(const char* s, int& out_seconds){
     char* end = nullptr;
     long val = std::strtol(s, &end, 10);
     if(*end != '\0') return false;
-    if(val <= 0 || val > 86400) return false;
+    if(val <= 0 || val > 604800) return false;
     out_seconds = static_cast<int>(val);
     return true;
 }

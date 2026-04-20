@@ -2,6 +2,7 @@ use serde::Serialize;
 use std::fs;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::Manager;
 
 #[derive(Serialize)]
 struct SessionStatus {
@@ -308,22 +309,27 @@ fn get_session_status() -> SessionStatus {
                 let h = rem / 3600;
                 let m = (rem % 3600) / 60;
                 let s = rem % 60;
+                let formatted = if h > 0 {
+                    format!("{}:{:02}:{:02}", h, m, s)
+                } else {
+                    format!("{:02}:{:02}", m, s)
+                };
                 SessionStatus {
                     active: true,
-                    remaining: format!("{:02}:{:02}:{:02}", h, m, s),
+                    remaining: formatted,
                     remaining_secs: rem,
                 }
             } else {
                 SessionStatus {
                     active: false,
-                    remaining: "00:00:00".to_string(),
+                    remaining: "00:00".to_string(),
                     remaining_secs: 0,
                 }
             }
         }
         None => SessionStatus {
             active: false,
-            remaining: "00:00:00".to_string(),
+            remaining: "00:00".to_string(),
             remaining_secs: 0,
         },
     }
@@ -385,7 +391,7 @@ fn get_random_quote() -> String {
     lines[seed % lines.len()].clone()
 }
 
-fn read_quote_length(home: &str) -> String {
+fn read_quote_length(_home: &str) -> String {
     let result = Command::new(bliss_path())
         .args(["config", "quotes", "get"])
         .output();
@@ -871,10 +877,488 @@ fn profile_apply(profile: Profile) -> CommandOutput {
     }
 }
 
+// ── Stats ──
+
+#[derive(Serialize, serde::Deserialize, Clone)]
+struct SessionStatsData {
+    total_sessions: u32,
+    total_focus_minutes: u32,
+    current_streak: u32,
+    longest_streak: u32,
+    last_session_date: Option<String>,
+}
+
+#[derive(Serialize, serde::Deserialize, Clone)]
+struct SessionLogEntry {
+    date: String,
+    minutes: u32,
+    started_at: String,
+}
+
+fn bliss_config_dir() -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    format!("{}/.config/bliss", home)
+}
+
+fn stats_path() -> String {
+    format!("{}/stats.json", bliss_config_dir())
+}
+
+fn stats_log_path() -> String {
+    format!("{}/session_log.json", bliss_config_dir())
+}
+
+#[tauri::command]
+fn stats_load() -> SessionStatsData {
+    fs::read_to_string(stats_path())
+        .ok()
+        .and_then(|d| serde_json::from_str(&d).ok())
+        .unwrap_or(SessionStatsData {
+            total_sessions: 0,
+            total_focus_minutes: 0,
+            current_streak: 0,
+            longest_streak: 0,
+            last_session_date: None,
+        })
+}
+
+#[tauri::command]
+fn stats_log_load() -> Vec<SessionLogEntry> {
+    fs::read_to_string(stats_log_path())
+        .ok()
+        .and_then(|d| serde_json::from_str(&d).ok())
+        .unwrap_or_default()
+}
+
+fn today_string() -> String {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let secs = now as i64;
+    let days_since_epoch = secs / 86400;
+    let mut y2 = 1970i64;
+    let mut remaining_days = days_since_epoch;
+    loop {
+        let days_in_year = if y2 % 4 == 0 && (y2 % 100 != 0 || y2 % 400 == 0) { 366 } else { 365 };
+        if remaining_days < days_in_year { break; }
+        remaining_days -= days_in_year;
+        y2 += 1;
+    }
+    let leap = y2 % 4 == 0 && (y2 % 100 != 0 || y2 % 400 == 0);
+    let month_days: [i64; 12] = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut m = 0;
+    for i in 0..12 {
+        if remaining_days < month_days[i] { m = i; break; }
+        remaining_days -= month_days[i];
+        if i == 11 { m = 11; }
+    }
+    format!("{:04}-{:02}-{:02}", y2, m + 1, remaining_days + 1)
+}
+
+fn yesterday_string() -> String {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let secs = (now as i64) - 86400;
+    let days_since_epoch = secs / 86400;
+    let mut y = 1970i64;
+    let mut remaining_days = days_since_epoch;
+    loop {
+        let days_in_year = if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) { 366 } else { 365 };
+        if remaining_days < days_in_year { break; }
+        remaining_days -= days_in_year;
+        y += 1;
+    }
+    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    let month_days: [i64; 12] = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut m = 0;
+    for i in 0..12 {
+        if remaining_days < month_days[i] { m = i; break; }
+        remaining_days -= month_days[i];
+        if i == 11 { m = 11; }
+    }
+    format!("{:04}-{:02}-{:02}", y, m + 1, remaining_days + 1)
+}
+
+#[tauri::command]
+fn stats_record_session(minutes: u32) -> CommandOutput {
+    let dir = bliss_config_dir();
+    let _ = fs::create_dir_all(&dir);
+
+    let mut stats = stats_load();
+    stats.total_sessions += 1;
+    stats.total_focus_minutes += minutes;
+
+    let today = today_string();
+    let yesterday = yesterday_string();
+
+    if let Some(ref last) = stats.last_session_date {
+        if last == &today {
+            // same day, streak unchanged
+        } else if last == &yesterday {
+            stats.current_streak += 1;
+        } else {
+            stats.current_streak = 1;
+        }
+    } else {
+        stats.current_streak = 1;
+    }
+
+    stats.longest_streak = stats.longest_streak.max(stats.current_streak);
+    stats.last_session_date = Some(today.clone());
+
+    // Save stats
+    if let Ok(json) = serde_json::to_string_pretty(&stats) {
+        let _ = fs::write(stats_path(), json);
+    }
+
+    // Append to log
+    let mut log = stats_log_load();
+    let now_secs = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    log.push(SessionLogEntry {
+        date: today,
+        minutes,
+        started_at: format!("{}", now_secs),
+    });
+    if let Ok(json) = serde_json::to_string_pretty(&log) {
+        let _ = fs::write(stats_log_path(), json);
+    }
+
+    CommandOutput { success: true, stdout: String::new(), error: None }
+}
+
+// ── Scheduling ──
+
+#[derive(Serialize, serde::Deserialize, Clone)]
+struct ScheduleEntry {
+    id: String,
+    #[serde(rename = "configName")]
+    config_name: String,
+    days: Vec<u8>,      // 1=Sun, 2=Mon, ..., 7=Sat
+    hour: u8,           // 0-23
+    minute: u8,         // 0-59
+    #[serde(rename = "durationMinutes")]
+    duration_minutes: u32,
+    enabled: bool,
+}
+
+fn schedules_path() -> String {
+    format!("{}/schedules.json", bliss_config_dir())
+}
+
+#[tauri::command]
+fn schedule_list() -> Vec<ScheduleEntry> {
+    fs::read_to_string(schedules_path())
+        .ok()
+        .and_then(|d| serde_json::from_str(&d).ok())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn schedule_save(entries: Vec<ScheduleEntry>) -> CommandOutput {
+    let dir = bliss_config_dir();
+    let _ = fs::create_dir_all(&dir);
+    match serde_json::to_string_pretty(&entries) {
+        Ok(json) => match fs::write(schedules_path(), json) {
+            Ok(_) => CommandOutput { success: true, stdout: String::new(), error: None },
+            Err(e) => CommandOutput { success: false, stdout: String::new(), error: Some(e.to_string()) },
+        },
+        Err(e) => CommandOutput { success: false, stdout: String::new(), error: Some(e.to_string()) },
+    }
+}
+
+// ── Notifications ──
+
+#[tauri::command]
+fn send_notification(title: String, body: String) -> CommandOutput {
+    let script = format!(
+        "display notification \"{}\" with title \"{}\"",
+        body.replace('\\', "\\\\").replace('"', "\\\""),
+        title.replace('\\', "\\\\").replace('"', "\\\"")
+    );
+    let result = Command::new("osascript").args(["-e", &script]).output();
+    match result {
+        Ok(_) => CommandOutput { success: true, stdout: String::new(), error: None },
+        Err(e) => CommandOutput { success: false, stdout: String::new(), error: Some(e.to_string()) },
+    }
+}
+
+// ── Whitelist / Block Mode ──
+
+fn block_mode_path() -> String {
+    format!("{}/block_mode.txt", bliss_config_dir())
+}
+
+fn whitelist_path() -> String {
+    format!("{}/whitelist.txt", bliss_config_dir())
+}
+
+#[tauri::command]
+fn config_block_mode_get() -> String {
+    fs::read_to_string(block_mode_path())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|_| "blocklist".to_string())
+}
+
+#[tauri::command]
+fn config_block_mode_set(mode: String) -> CommandOutput {
+    let dir = bliss_config_dir();
+    let _ = fs::create_dir_all(&dir);
+    match fs::write(block_mode_path(), format!("{}\n", mode)) {
+        Ok(_) => CommandOutput { success: true, stdout: String::new(), error: None },
+        Err(e) => CommandOutput { success: false, stdout: String::new(), error: Some(e.to_string()) },
+    }
+}
+
+#[tauri::command]
+fn config_whitelist_list() -> Vec<String> {
+    fs::read_to_string(whitelist_path())
+        .map(|s| s.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn config_whitelist_add(domain: String) -> CommandOutput {
+    let dir = bliss_config_dir();
+    let _ = fs::create_dir_all(&dir);
+    let mut entries: Vec<String> = config_whitelist_list();
+    let d = domain.trim().to_string();
+    if !entries.contains(&d) {
+        entries.push(d);
+    }
+    match fs::write(whitelist_path(), entries.join("\n") + "\n") {
+        Ok(_) => CommandOutput { success: true, stdout: String::new(), error: None },
+        Err(e) => CommandOutput { success: false, stdout: String::new(), error: Some(e.to_string()) },
+    }
+}
+
+#[tauri::command]
+fn config_whitelist_remove(domain: String) -> CommandOutput {
+    let entries: Vec<String> = config_whitelist_list().into_iter().filter(|e| e != domain.trim()).collect();
+    let dir = bliss_config_dir();
+    let _ = fs::create_dir_all(&dir);
+    match fs::write(whitelist_path(), entries.join("\n") + "\n") {
+        Ok(_) => CommandOutput { success: true, stdout: String::new(), error: None },
+        Err(e) => CommandOutput { success: false, stdout: String::new(), error: Some(e.to_string()) },
+    }
+}
+
+// ── Per-challenge config (synced with SwiftUI) ──
+
+fn challenge_config_path(key: &str) -> String {
+    format!("{}/{}.txt", bliss_config_dir(), key)
+}
+
+#[tauri::command]
+fn config_challenge_get(key: String) -> String {
+    fs::read_to_string(challenge_config_path(&key))
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn config_challenge_set(key: String, value: String) -> CommandOutput {
+    let dir = bliss_config_dir();
+    let _ = fs::create_dir_all(&dir);
+    match fs::write(challenge_config_path(&key), format!("{}\n", value)) {
+        Ok(_) => CommandOutput { success: true, stdout: String::new(), error: None },
+        Err(e) => CommandOutput { success: false, stdout: String::new(), error: Some(e.to_string()) },
+    }
+}
+
+/// Batch load all challenge configs + setup state in one call to avoid N round trips
+#[derive(Serialize)]
+struct AppBootData {
+    setup_complete: bool,
+    panic_mode: String,
+    challenge_configs: std::collections::HashMap<String, String>,
+}
+
+#[tauri::command]
+fn app_boot() -> AppBootData {
+    let dir = bliss_config_dir();
+    let setup_complete = std::path::Path::new(&format!("{}/setup_complete", dir)).exists();
+    let panic_mode = fs::read_to_string(format!("{}/panic_mode.txt", dir))
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|_| "typing".to_string());
+
+    let keys = [
+        "minesweeper_size", "wordle_difficulty", "game2048_difficulty",
+        "sudoku_difficulty", "simon_difficulty", "pipes_size", "panic_difficulty",
+    ];
+    let mut configs = std::collections::HashMap::new();
+    for key in &keys {
+        if let Ok(val) = fs::read_to_string(format!("{}/{}.txt", dir, key)) {
+            let v = val.trim().to_string();
+            if !v.is_empty() {
+                configs.insert(key.to_string(), v);
+            }
+        }
+    }
+    AppBootData { setup_complete, panic_mode, challenge_configs: configs }
+}
+
+// ── Sound effects ──
+
+#[tauri::command]
+fn play_sound(name: String) {
+    let sound_file = match name.as_str() {
+        "success" => "/System/Library/Sounds/Glass.aiff",
+        "error" => "/System/Library/Sounds/Basso.aiff",
+        "click" => "/System/Library/Sounds/Tink.aiff",
+        "pop" => "/System/Library/Sounds/Pop.aiff",
+        _ => return,
+    };
+    // Fire and forget
+    let _ = Command::new("afplay").arg(sound_file).spawn();
+}
+
+// ── Uninstall ──
+
+#[tauri::command]
+fn run_uninstall() -> CommandOutput {
+    let share_dir = "/usr/local/share/bliss";
+    let script = format!("{}/uninstall.sh", share_dir);
+    if std::path::Path::new(&script).exists() {
+        // Run uninstall script with osascript for sudo prompt
+        let apple_script = format!(
+            "do shell script \"bash '{}'\" with administrator privileges",
+            script
+        );
+        let result = Command::new("osascript").args(["-e", &apple_script]).output();
+        match result {
+            Ok(output) if output.status.success() => {
+                CommandOutput { success: true, stdout: "Uninstalled".into(), error: None }
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                CommandOutput { success: false, stdout: String::new(), error: Some(stderr) }
+            }
+            Err(e) => CommandOutput { success: false, stdout: String::new(), error: Some(e.to_string()) },
+        }
+    } else {
+        CommandOutput { success: false, stdout: String::new(), error: Some("Uninstall script not found".into()) }
+    }
+}
+
+// ── Setup state ──
+
+#[tauri::command]
+fn setup_complete_check() -> bool {
+    let path = format!("{}/setup_complete", bliss_config_dir());
+    std::path::Path::new(&path).exists()
+}
+
+#[tauri::command]
+fn setup_complete_mark() -> CommandOutput {
+    let dir = bliss_config_dir();
+    let _ = fs::create_dir_all(&dir);
+    let path = format!("{}/setup_complete", dir);
+    match fs::write(&path, "1\n") {
+        Ok(_) => CommandOutput { success: true, stdout: String::new(), error: None },
+        Err(e) => CommandOutput { success: false, stdout: String::new(), error: Some(e.to_string()) },
+    }
+}
+
+fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent};
+    use tauri::menu::{MenuBuilder, MenuItemBuilder};
+    let show_item = MenuItemBuilder::with_id("show", "Open Bliss").build(app)?;
+    let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+    let menu = MenuBuilder::new(app)
+        .item(&show_item)
+        .separator()
+        .item(&quit_item)
+        .build()?;
+
+    // Load tray icon PNG and decode to RGBA
+    let icon_bytes = include_bytes!("../icons/tray-icon@2x.png");
+    let icon_img = image::load_from_memory(icon_bytes).expect("decode tray icon");
+    let rgba = icon_img.to_rgba8();
+    let (iw, ih) = rgba.dimensions();
+    let icon = tauri::image::Image::new_owned(rgba.into_raw(), iw, ih);
+
+    let tray = TrayIconBuilder::new()
+        .menu(&menu)
+        .icon(icon)
+        .icon_as_template(true)
+        .tooltip("Bliss")
+        .on_menu_event(|app, event| {
+            match event.id().as_ref() {
+                "show" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                "quit" => {
+                    std::process::exit(0);
+                }
+                _ => {}
+            }
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                let app = tray.app_handle();
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        })
+        .build(app)?;
+
+    // Spawn a timer thread to update the tray title
+    let tray_handle = tray.clone();
+    std::thread::spawn(move || {
+        let mut last_title = String::from("__init__");
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            let title = match read_end_time() {
+                Some(end) => {
+                    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+                    let rem = (end - now).max(0);
+                    if rem > 0 {
+                        let h = rem / 3600;
+                        let m = (rem % 3600) / 60;
+                        let s = rem % 60;
+                        if h > 0 {
+                            format!("{}:{:02}:{:02}", h, m, s)
+                        } else {
+                            format!("{:02}:{:02}", m, s)
+                        }
+                    } else {
+                        String::new()
+                    }
+                }
+                None => String::new(),
+            };
+            if title != last_title {
+                if title.is_empty() {
+                    // No active session - just show the icon, no text
+                    let _ = tray_handle.set_title(Option::<&str>::None);
+                } else {
+                    // Active session - show timer next to icon
+                    let _ = tray_handle.set_title(Some(&title));
+                }
+                last_title = title;
+            }
+        }
+    });
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            setup_tray(app).ok();
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let _ = window.hide();
+                api.prevent_close();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             get_session_status,
             start_session,
@@ -903,7 +1387,34 @@ pub fn run() {
             profile_delete,
             profile_set_active,
             profile_apply,
+            stats_load,
+            stats_log_load,
+            stats_record_session,
+            schedule_list,
+            schedule_save,
+            send_notification,
+            config_block_mode_get,
+            config_block_mode_set,
+            config_whitelist_list,
+            config_whitelist_add,
+            config_whitelist_remove,
+            setup_complete_check,
+            config_challenge_get,
+            config_challenge_set,
+            app_boot,
+            play_sound,
+            run_uninstall,
+            setup_complete_mark,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                // Cmd+Q: hide window instead of quitting (tray "Quit" uses process::exit)
+                api.prevent_exit();
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
+        });
 }

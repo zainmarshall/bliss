@@ -8,7 +8,7 @@ final class BlissStatusBar {
 
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "Bliss --:--:--"
+        statusItem.button?.title = "Bliss --:--"
         statusItem.menu = buildMenu()
 
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
@@ -63,21 +63,28 @@ final class BlissStatusBar {
     }
 
     private func formatRemaining(_ seconds: Int64) -> String {
-        if seconds <= 0 { return "00:00:00" }
+        if seconds <= 0 { return "00:00" }
         let hours = seconds / 3600
         let minutes = (seconds % 3600) / 60
         let secs = seconds % 60
-        return String(format: "%02d:%02d:%02d", hours, minutes, secs)
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, secs)
+        }
+        return String(format: "%02d:%02d", minutes, secs)
     }
 
     private func updateTitle() {
         guard let endTime = readEndTime() else {
-            statusItem.button?.title = "Bliss --:--:--"
+            statusItem.button?.title = "Bliss --:--"
             return
         }
         let now = Int64(Date().timeIntervalSince1970)
         let remaining = max(0, endTime - now)
-        statusItem.button?.title = "Bliss \(formatRemaining(remaining))"
+        if remaining == 0 {
+            statusItem.button?.title = "Bliss --:--"
+        } else {
+            statusItem.button?.title = "Bliss \(formatRemaining(remaining))"
+        }
     }
 }
 

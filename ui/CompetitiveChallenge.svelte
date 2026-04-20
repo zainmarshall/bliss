@@ -1,6 +1,14 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { EditorView, keymap } from "@codemirror/view";
+  import { EditorState, Compartment } from "@codemirror/state";
+  import { basicSetup } from "codemirror";
+  import { cpp } from "@codemirror/lang-cpp";
+  import { python } from "@codemirror/lang-python";
+  import { java } from "@codemirror/lang-java";
+  import { oneDark } from "@codemirror/theme-one-dark";
+  import { indentWithTab } from "@codemirror/commands";
 
   let { onSuccess, onCancel } = $props();
 
@@ -13,7 +21,9 @@
   let running = $state(false);
   let submitting = $state(false);
   let editorEl;
-  let lineCount = $derived(Math.max(code.split("\n").length, 1));
+  let editorView;
+  let langCompartment = new Compartment();
+  let updatingFromEditor = false;
 
   function getConfig() {
     try {
@@ -28,72 +38,53 @@
     { id: "java17", name: "Java 17", ext: "java" },
   ];
 
-  // Token-based syntax highlighting - avoids nested HTML replacement issues
-  function highlightCode(text) {
-    let keywords;
-    let commentPattern;
-    let preprocessorPattern = null;
+  function getLangExtension(langId) {
+    if (langId === "python3") return python();
+    if (langId === "java17") return java();
+    return cpp();
+  }
 
-    if (language === "python3") {
-      keywords = new Set(["def","class","if","elif","else","for","while","return","import","from","as","try","except","finally","with","in","not","and","or","is","pass","break","continue","yield","lambda","raise","True","False","None","print","range","len","int","str","list","dict","set","input","map","sorted","enumerate"]);
-      commentPattern = /#.*/g;
-    } else if (language === "java17") {
-      keywords = new Set(["public","private","protected","static","void","int","long","double","float","char","boolean","String","class","import","package","new","return","if","else","for","while","do","switch","case","break","continue","try","catch","finally","throws","throw","extends","implements","this","super","final","abstract","null","true","false","System","Scanner","Arrays","Math","ArrayList","HashMap","Collections","Integer","Long"]);
-      commentPattern = /\/\/.*/g;
-    } else {
-      keywords = new Set(["using","namespace","int","long","double","float","char","bool","void","string","auto","const","static","return","if","else","for","while","do","switch","case","break","continue","struct","class","public","private","template","typename","typedef","sizeof","new","delete","true","false","nullptr","cout","cin","endl","vector","map","set","pair","sort","push_back","begin","end","size","main","scanf","printf","puts","gets","std"]);
-      commentPattern = /\/\/.*/g;
-      preprocessorPattern = /^[ \t]*#\w+/gm;
-    }
-
-    // Tokenize: split into chunks that are either special (comment, string, preprocessor) or plain code
-    let tokens = [];
-    let remaining = text;
-    let masterPattern = language === "python3"
-      ? /(#.*|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/gm
-      : /(\/\/.*|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/gm;
-
-    let lastIndex = 0;
-    let match;
-    masterPattern.lastIndex = 0;
-    while ((match = masterPattern.exec(text)) !== null) {
-      if (match.index > lastIndex) {
-        tokens.push({ type: "code", text: text.slice(lastIndex, match.index) });
+  function createEditor(el) {
+    let updateListener = EditorView.updateListener.of((update) => {
+      if (update.docChanged) {
+        updatingFromEditor = true;
+        code = update.state.doc.toString();
+        updatingFromEditor = false;
       }
-      let m = match[0];
-      if (m.startsWith("//") || m.startsWith("#")) {
-        tokens.push({ type: "comment", text: m });
-      } else {
-        tokens.push({ type: "string", text: m });
-      }
-      lastIndex = masterPattern.lastIndex;
-    }
-    if (lastIndex < text.length) {
-      tokens.push({ type: "code", text: text.slice(lastIndex) });
-    }
+    });
 
-    // Render each token
-    let out = "";
-    for (let tok of tokens) {
-      let escaped = tok.text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      if (tok.type === "comment") {
-        out += `<span class="hl-comment">${escaped}</span>`;
-      } else if (tok.type === "string") {
-        out += `<span class="hl-string">${escaped}</span>`;
-      } else {
-        // Highlight keywords, preprocessor directives, numbers, and angle-bracket includes
-        escaped = escaped.replace(/\b(\d+)\b/g, '<span class="hl-number">$1</span>');
-        if (preprocessorPattern) {
-          escaped = escaped.replace(/^([ \t]*#\w+)/gm, '<span class="hl-keyword">$1</span>');
-          escaped = escaped.replace(/(&lt;[a-zA-Z_./]+&gt;)/g, '<span class="hl-string">$1</span>');
-        }
-        escaped = escaped.replace(/\b([a-zA-Z_]\w*)\b/g, (m) => {
-          return keywords.has(m) ? `<span class="hl-keyword">${m}</span>` : m;
-        });
-        out += escaped;
-      }
+    let editorTheme = EditorView.theme({
+      "&": { height: "100%", fontSize: "12px" },
+      ".cm-scroller": { overflow: "auto", fontFamily: '"SF Mono", "Menlo", "Consolas", monospace' },
+      ".cm-content": { caretColor: "#ec4899" },
+      "&.cm-focused .cm-cursor": { borderLeftColor: "#ec4899" },
+      ".cm-gutters": { background: "rgba(0, 0, 0, 0.2)", border: "none" },
+      ".cm-activeLineGutter": { background: "rgba(255, 255, 255, 0.05)" },
+    });
+
+    editorView = new EditorView({
+      state: EditorState.create({
+        doc: code,
+        extensions: [
+          basicSetup,
+          keymap.of([indentWithTab]),
+          langCompartment.of(getLangExtension(language)),
+          oneDark,
+          editorTheme,
+          updateListener,
+          EditorState.tabSize.of(4),
+        ],
+      }),
+      parent: el,
+    });
+  }
+
+  function switchLanguage(langId) {
+    if (editorView) {
+      editorView.dispatch({
+        effects: langCompartment.reconfigure(getLangExtension(langId)),
+      });
     }
-    return out;
   }
 
   // Render math-like LaTeX in problem text
@@ -137,19 +128,6 @@
     return r;
   }
 
-  function handleTab(e) {
-    if (e.key === "Tab") {
-      e.preventDefault();
-      let el = e.target;
-      let start = el.selectionStart;
-      let end = el.selectionEnd;
-      code = code.substring(0, start) + "    " + code.substring(end);
-      requestAnimationFrame(() => {
-        el.selectionStart = el.selectionEnd = start + 4;
-      });
-    }
-  }
-
   async function loadProblems() {
     try {
       problems = await invoke("cp_load_problems");
@@ -165,6 +143,11 @@
     if (filtered.length === 0) filtered = problems;
     problem = filtered[Math.floor(Math.random() * filtered.length)] || null;
     code = "";
+    if (editorView) {
+      editorView.dispatch({
+        changes: { from: 0, to: editorView.state.doc.length, insert: "" },
+      });
+    }
     testsPassed = false;
     resultText = "";
   }
@@ -195,7 +178,14 @@
     submitting = false;
   }
 
-  onMount(loadProblems);
+  onMount(() => {
+    loadProblems();
+    if (editorEl) createEditor(editorEl);
+  });
+
+  onDestroy(() => {
+    if (editorView) editorView.destroy();
+  });
 </script>
 
 <div class="panic-view">
@@ -270,7 +260,16 @@
     <!-- Right: Code editor -->
     <div class="editor-panel">
       <div class="panel-header">
-        <select class="lang-select" bind:value={language} onchange={() => { code = ""; testsPassed = false; }}>
+        <select class="lang-select" bind:value={language} onchange={(e) => {
+          switchLanguage(language);
+          if (editorView) {
+            editorView.dispatch({
+              changes: { from: 0, to: editorView.state.doc.length, insert: "" },
+            });
+          }
+          code = "";
+          testsPassed = false;
+        }}>
           {#each languages as lang}
             <option value={lang.id}>{lang.name}</option>
           {/each}
@@ -293,27 +292,7 @@
         </div>
       </div>
 
-      <div class="editor-wrap">
-        <div class="line-numbers">
-          {#each Array(lineCount) as _, i}
-            <span>{i + 1}</span>
-          {/each}
-        </div>
-        <div class="editor-container">
-          <!-- svelte-ignore a11y_positive_tabindex -->
-          <textarea
-            class="code-input"
-            bind:value={code}
-            onkeydown={handleTab}
-            spellcheck="false"
-            autocomplete="off"
-            autocorrect="off"
-            autocapitalize="off"
-            placeholder="Write your solution here..."
-          ></textarea>
-          <pre class="code-highlight" aria-hidden="true">{@html highlightCode(code + "\n")}</pre>
-        </div>
-      </div>
+      <div class="editor-wrap" bind:this={editorEl}></div>
 
       <!-- Output panel -->
       <div class="output-panel" class:passed={testsPassed} class:has-output={resultText}>
@@ -508,75 +487,12 @@
 
   .editor-wrap {
     flex: 1;
-    display: flex;
     overflow: hidden;
-    position: relative;
   }
 
-  .line-numbers {
-    width: 40px;
-    padding: 10px 0;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    padding-right: 8px;
-    font-family: "SF Mono", "Menlo", monospace;
-    font-size: 12px;
-    line-height: 1.5;
-    color: #444;
-    background: rgba(0, 0, 0, 0.2);
-    overflow: hidden;
-    user-select: none;
-    flex-shrink: 0;
-  }
-
-  .editor-container {
-    flex: 1;
-    position: relative;
-    overflow: auto;
-  }
-
-  .code-input, .code-highlight {
-    font-family: "SF Mono", "Menlo", "Consolas", monospace;
-    font-size: 12px;
-    line-height: 1.5;
-    padding: 10px;
-    margin: 0;
-    white-space: pre;
-    word-wrap: normal;
-    tab-size: 4;
-  }
-
-  .code-input {
-    position: absolute;
-    inset: 0;
-    width: 100%;
+  .editor-wrap :global(.cm-editor) {
     height: 100%;
-    background: transparent;
-    color: transparent;
-    caret-color: #ec4899;
-    border: none;
-    outline: none;
-    resize: none;
-    z-index: 2;
-    overflow: auto;
   }
-
-  .code-input::placeholder {
-    color: #444;
-  }
-
-  .code-highlight {
-    pointer-events: none;
-    color: #ccc;
-    min-height: 100%;
-    z-index: 1;
-  }
-
-  :global(.hl-keyword) { color: #c792ea; }
-  :global(.hl-string) { color: #c3e88d; }
-  :global(.hl-comment) { color: #546e7a; font-style: italic; }
-  :global(.hl-number) { color: #f78c6c; }
 
   /* Output panel */
   .output-panel {

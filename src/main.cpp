@@ -991,13 +991,13 @@ int main(int argc, char* argv[]){
         int total_seconds = 0;
         if(use_seconds){
             if(!parse_seconds(argv[2], total_seconds)){
-                std::cout << "[error] invalid seconds; use 1-86400\n";
+                std::cout << "[error] invalid seconds; use 1-604800\n";
                 return 1;
             }
         } else {
             int minutes = 0;
             if(!parse_minutes(argv[2], minutes)){
-                std::cout << "[error] invalid minutes; use 1-1440\n";
+                std::cout << "[error] invalid minutes; use 1-10080\n";
                 return 1;
             }
             total_seconds = minutes * 60;

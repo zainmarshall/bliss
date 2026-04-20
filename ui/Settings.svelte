@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { Folder, ShieldAlert, Globe, LayoutGrid, Compass, Wrench, Trash2 } from "lucide-svelte";
+  import { Folder, ShieldAlert, Globe, LayoutGrid, Compass, Wrench, Trash2, Shield } from "lucide-svelte";
 
   let { sessionActive } = $props();
 
@@ -18,6 +18,9 @@
   let activeProfile = $state(null);
   let showNewConfig = $state(false);
   let newConfigName = $state("");
+  let blockMode = $state("blocklist");
+  let whitelist = $state([]);
+  let whitelistInput = $state("");
 
   // Exact order from SwiftUI SettingsSection enum
   const sections = [
@@ -26,6 +29,7 @@
     { id: "websites", label: "Blocked Websites", icon: Globe },
     { id: "apps", label: "Blocked Apps", icon: LayoutGrid },
     { id: "browsers", label: "Browsers", icon: Compass },
+    { id: "blockmode", label: "Block Mode", icon: Shield },
     { id: "troubleshooting", label: "Troubleshooting", icon: Wrench },
     { id: "uninstall", label: "Uninstall", icon: Trash2 },
   ];
@@ -52,6 +56,8 @@
     apps = await invoke("config_app_list");
     quoteLength = await invoke("config_quote_length_get");
     panicMode = await invoke("config_panic_mode_get");
+    blockMode = await invoke("config_block_mode_get");
+    whitelist = await invoke("config_whitelist_list");
     loadPanicConfigs();
     await loadProfiles();
   }
@@ -198,28 +204,84 @@
 
   let panicConfigs = $state({});
 
-  function loadPanicConfigs() {
-    try {
-      panicConfigs = JSON.parse(localStorage.getItem("bliss_panic_configs") || "{}");
-    } catch { panicConfigs = {}; }
+  // Maps Tauri config keys to the file names SwiftUI uses
+  const challengeFileKeys = {
+    minesweeper_size: "minesweeper_size",
+    wordle_difficulty: "wordle_difficulty",
+    "2048_difficulty": "game2048_difficulty",
+    sudoku_difficulty: "sudoku_difficulty",
+    simon_difficulty: "simon_difficulty",
+    pipes_size: "pipes_size",
+    cp_difficulty: "panic_difficulty",
+  };
+
+  const challengeDefaults = {
+    minesweeper_size: "medium",
+    wordle_difficulty: "easy",
+    "2048_difficulty": "medium",
+    sudoku_difficulty: "medium",
+    simon_difficulty: "medium",
+    pipes_size: "medium",
+    cp_difficulty: "easy",
+  };
+
+  async function loadPanicConfigs() {
+    let configs = {};
+    for (let [key, fileKey] of Object.entries(challengeFileKeys)) {
+      try {
+        let val = await invoke("config_challenge_get", { key: fileKey });
+        if (val) configs[key] = val;
+      } catch {}
+    }
+    panicConfigs = configs;
+    // Sync to localStorage so challenge components can read synchronously
+    localStorage.setItem("bliss_panic_configs", JSON.stringify({ ...challengeDefaults, ...configs }));
   }
 
   function getPanicConfig(key) {
-    let defaults = {
-      minesweeper_size: "medium",
-      wordle_difficulty: "easy",
-      "2048_difficulty": "medium",
-      sudoku_difficulty: "medium",
-      simon_difficulty: "medium",
-    };
-    return panicConfigs[key] || defaults[key];
+    return panicConfigs[key] || challengeDefaults[key];
   }
 
-  function setPanicConfig(key, value) {
+  async function setPanicConfig(key, value) {
     if (sessionActive) return;
     panicConfigs[key] = value;
     panicConfigs = { ...panicConfigs };
-    localStorage.setItem("bliss_panic_configs", JSON.stringify(panicConfigs));
+    let fileKey = challengeFileKeys[key] || key;
+    await invoke("config_challenge_set", { key: fileKey, value });
+    // Keep localStorage in sync for challenge components
+    localStorage.setItem("bliss_panic_configs", JSON.stringify({ ...challengeDefaults, ...panicConfigs }));
+  }
+
+  async function setBlockMode(mode) {
+    if (sessionActive) return;
+    await invoke("config_block_mode_set", { mode });
+    blockMode = mode;
+  }
+
+  async function addWhitelist() {
+    let domain = whitelistInput.trim();
+    if (!domain || sessionActive) return;
+    await invoke("config_whitelist_add", { domain });
+    whitelistInput = "";
+    whitelist = await invoke("config_whitelist_list");
+  }
+
+  async function removeWhitelist(domain) {
+    if (sessionActive) return;
+    await invoke("config_whitelist_remove", { domain });
+    whitelist = await invoke("config_whitelist_list");
+  }
+
+  function whitelistKeydown(e) {
+    if (e.key === "Enter") addWhitelist();
+  }
+
+  async function runUninstall() {
+    if (sessionActive) return;
+    let result = await invoke("run_uninstall");
+    if (result.success) {
+      window.close();
+    }
   }
 
   function websiteKeydown(e) {
@@ -237,7 +299,7 @@
   <div class="settings-layout" class:locked={sessionActive}>
     <div class="sidebar">
       {#each sections as s}
-        <button class="sidebar-item" class:active={section === s.id} onclick={() => (section = s.id)}>
+        <button class="sidebar-item" class:active={section === s.id} data-section={s.id} onclick={() => (section = s.id)}>
           <span class="sidebar-icon"><svelte:component this={s.icon} size={16} /></span>
           {s.label}
         </button>
@@ -303,7 +365,7 @@
               <span class="input-icon">+</span>
               <input
                 type="text"
-                placeholder="Add website (e.g. youtube.com)"
+                placeholder="Add website or path (e.g. youtube.com or reddit.com/r/gaming)"
                 bind:value={websiteInput}
                 onkeydown={websiteKeydown}
                 disabled={sessionActive}
@@ -586,6 +648,78 @@
           {/if}
         </div>
 
+      {:else if section === "blockmode"}
+        <div class="form-section">
+          <div class="section-header">
+            <Shield size={14} />
+            Block Mode
+          </div>
+          <div class="form-group">
+            <div class="field-row">
+              <div class="field-label">
+                <span>Mode</span>
+                <span class="field-desc">Blocklist blocks listed sites. Whitelist blocks everything except listed sites.</span>
+              </div>
+            </div>
+            <div class="segmented" style="margin-top: 8px">
+              <button class:seg-active={blockMode === "blocklist"} onclick={() => setBlockMode("blocklist")} disabled={sessionActive}>
+                Blocklist
+              </button>
+              <button class:seg-active={blockMode === "whitelist"} onclick={() => setBlockMode("whitelist")} disabled={sessionActive}>
+                Whitelist
+              </button>
+            </div>
+          </div>
+
+          {#if blockMode === "whitelist"}
+            <div class="form-group">
+              <div class="field-row">
+                <div class="field-label">
+                  <span>Allowed Sites</span>
+                  <span class="field-desc">Only these sites will be accessible during sessions</span>
+                </div>
+              </div>
+              <div class="input-row" style="margin-top: 8px">
+                <span class="input-icon">+</span>
+                <input
+                  type="text"
+                  placeholder="Allow domain (e.g. docs.google.com)"
+                  bind:value={whitelistInput}
+                  onkeydown={whitelistKeydown}
+                  disabled={sessionActive}
+                />
+              </div>
+            </div>
+
+            <div class="form-section">
+              <div class="item-list">
+                {#each whitelist as site}
+                  <div class="item-row">
+                    <span class="item-label">{site}</span>
+                    <button class="remove-circle" onclick={() => removeWhitelist(site)} disabled={sessionActive}>
+                      <svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="8" fill="#ef4444"/><line x1="5.5" y1="9" x2="12.5" y2="9" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>
+                    </button>
+                  </div>
+                {/each}
+                {#if whitelist.length === 0}
+                  <div class="empty-state">No allowed sites - everything will be blocked</div>
+                {/if}
+              </div>
+            </div>
+          {/if}
+        </div>
+
+        <div class="form-section">
+          <div class="form-group">
+            <div class="field-row">
+              <div class="field-label">
+                <span>URL Path Blocking</span>
+                <span class="field-desc">Block specific paths, e.g. reddit.com/r/gaming. Add these in Blocked Websites.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
       {:else if section === "troubleshooting"}
         <div class="form-section">
           <div class="section-header">
@@ -608,7 +742,7 @@
       {:else if section === "uninstall"}
         <div class="form-section">
           <div class="form-group uninstall-group">
-            <button class="uninstall-btn" disabled={sessionActive}>Uninstall Bliss...</button>
+            <button class="uninstall-btn" disabled={sessionActive} onclick={runUninstall}>Uninstall Bliss...</button>
           </div>
         </div>
       {/if}
@@ -664,7 +798,7 @@
     gap: 8px;
     padding: 7px 10px;
     font-size: 13px;
-    color: #888;
+    color: #999;
     background: none;
     border: none;
     border-radius: 6px;
@@ -674,7 +808,7 @@
   }
 
   .sidebar-item.active {
-    color: #e0e0e0;
+    color: #f0f0f0;
     background: rgba(255, 255, 255, 0.06);
   }
 
@@ -714,7 +848,7 @@
     gap: 6px;
     font-size: 12px;
     font-weight: 600;
-    color: #888;
+    color: #999;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     padding: 0 12px 8px;
@@ -724,7 +858,7 @@
     font-weight: 400;
     text-transform: none;
     letter-spacing: 0;
-    color: #666;
+    color: #888;
   }
 
   .form-group {
@@ -756,7 +890,7 @@
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid #333;
     border-radius: 6px;
-    color: #e0e0e0;
+    color: #f0f0f0;
     outline: none;
     transition: border-color 0.15s;
   }
@@ -766,7 +900,7 @@
   }
 
   .input-row input::placeholder {
-    color: #555;
+    color: #777;
   }
 
   .presets {
@@ -790,7 +924,7 @@
   }
 
   .preset-btn:hover {
-    border-color: #555;
+    border-color: #777;
   }
 
   .preset-btn.preset-active {
@@ -829,7 +963,7 @@
   .item-label {
     flex: 1;
     font-size: 13px;
-    color: #e0e0e0;
+    color: #f0f0f0;
   }
 
   .app-row {
@@ -862,12 +996,12 @@
 
   .app-name {
     font-size: 13px;
-    color: #e0e0e0;
+    color: #f0f0f0;
   }
 
   .app-path {
     font-size: 11px;
-    color: #666;
+    color: #888;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -896,7 +1030,7 @@
   .empty-state {
     padding: 12px;
     font-size: 13px;
-    color: #555;
+    color: #777;
   }
 
   .text-action {
@@ -922,7 +1056,7 @@
 
   .footer-note {
     font-size: 11px;
-    color: #555;
+    color: #777;
     margin: 8px 0 0;
     padding-left: 12px;
     line-height: 1.4;
@@ -943,12 +1077,12 @@
 
   .field-label > span:first-child {
     font-size: 13px;
-    color: #e0e0e0;
+    color: #f0f0f0;
   }
 
   .field-desc {
     font-size: 11px;
-    color: #666;
+    color: #888;
   }
 
   select {
@@ -957,7 +1091,7 @@
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid #333;
     border-radius: 6px;
-    color: #e0e0e0;
+    color: #f0f0f0;
     outline: none;
     min-width: 120px;
   }
@@ -974,7 +1108,7 @@
   .segmented button {
     padding: 5px 16px;
     font-size: 12px;
-    color: #888;
+    color: #999;
     background: rgba(255, 255, 255, 0.02);
     border: none;
     border-right: 1px solid #333;
@@ -987,7 +1121,7 @@
   }
 
   .segmented button.seg-active {
-    color: #e0e0e0;
+    color: #f0f0f0;
     background: rgba(236, 72, 153, 0.15);
   }
 
@@ -999,7 +1133,7 @@
   .action-btn {
     padding: 5px 14px;
     font-size: 13px;
-    color: #e0e0e0;
+    color: #f0f0f0;
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid #333;
     border-radius: 6px;
@@ -1038,7 +1172,7 @@
   .config-apply-btn {
     padding: 3px 10px;
     font-size: 12px;
-    color: #e0e0e0;
+    color: #f0f0f0;
     background: rgba(255, 255, 255, 0.08);
     border: 1px solid #444;
     border-radius: 5px;
@@ -1070,7 +1204,7 @@
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid #333;
     border-radius: 6px;
-    color: #e0e0e0;
+    color: #f0f0f0;
     outline: none;
   }
 
@@ -1080,7 +1214,7 @@
 
   .cancel-link {
     font-size: 12px;
-    color: #888;
+    color: #999;
     background: none;
     border: none;
     cursor: pointer;
