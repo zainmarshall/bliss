@@ -320,16 +320,18 @@ fn get_session_status() -> SessionStatus {
                     remaining_secs: rem,
                 }
             } else {
+                // Stale end_time file - session is over, clean up
+                let _ = fs::remove_file("/var/db/bliss_end_time");
                 SessionStatus {
                     active: false,
-                    remaining: "00:00".to_string(),
+                    remaining: String::new(),
                     remaining_secs: 0,
                 }
             }
         }
         None => SessionStatus {
             active: false,
-            remaining: "00:00".to_string(),
+            remaining: String::new(),
             remaining_secs: 0,
         },
     }
@@ -342,7 +344,10 @@ fn start_session(seconds: u32) -> CommandOutput {
 
 #[tauri::command]
 fn run_panic() -> CommandOutput {
-    run_bliss(&["panic", "--skip-challenge"])
+    let result = run_bliss(&["panic", "--skip-challenge"]);
+    // Delete end_time immediately so tray/UI update without waiting for blissroot
+    let _ = fs::remove_file("/var/db/bliss_end_time");
+    result
 }
 
 #[tauri::command]
@@ -1067,8 +1072,9 @@ fn schedule_save(entries: Vec<ScheduleEntry>) -> CommandOutput {
 
 #[tauri::command]
 fn send_notification(title: String, body: String) -> CommandOutput {
+    // Use "tell app" to attribute notification to Bliss (shows our icon)
     let script = format!(
-        "display notification \"{}\" with title \"{}\"",
+        "tell application \"Bliss\" to display notification \"{}\" with title \"{}\"",
         body.replace('\\', "\\\\").replace('"', "\\\""),
         title.replace('\\', "\\\\").replace('"', "\\\"")
     );
@@ -1237,6 +1243,64 @@ fn run_uninstall() -> CommandOutput {
     }
 }
 
+// ── App block mode ──
+
+fn app_block_mode_path() -> String {
+    format!("{}/app_block_mode.txt", bliss_config_dir())
+}
+
+fn allowed_apps_path() -> String {
+    format!("{}/allowed_apps.txt", bliss_config_dir())
+}
+
+#[tauri::command]
+fn config_app_block_mode_get() -> String {
+    fs::read_to_string(app_block_mode_path())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|_| "blocklist".to_string())
+}
+
+#[tauri::command]
+fn config_app_block_mode_set(mode: String) -> CommandOutput {
+    let dir = bliss_config_dir();
+    let _ = fs::create_dir_all(&dir);
+    match fs::write(app_block_mode_path(), format!("{}\n", mode)) {
+        Ok(_) => CommandOutput { success: true, stdout: String::new(), error: None },
+        Err(e) => CommandOutput { success: false, stdout: String::new(), error: Some(e.to_string()) },
+    }
+}
+
+#[tauri::command]
+fn config_allowed_apps_list() -> Vec<String> {
+    fs::read_to_string(allowed_apps_path())
+        .map(|s| s.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn config_allowed_apps_add(app_name: String) -> CommandOutput {
+    let dir = bliss_config_dir();
+    let _ = fs::create_dir_all(&dir);
+    let mut entries = config_allowed_apps_list();
+    let n = app_name.trim().to_string();
+    if !entries.contains(&n) { entries.push(n); }
+    match fs::write(allowed_apps_path(), entries.join("\n") + "\n") {
+        Ok(_) => CommandOutput { success: true, stdout: String::new(), error: None },
+        Err(e) => CommandOutput { success: false, stdout: String::new(), error: Some(e.to_string()) },
+    }
+}
+
+#[tauri::command]
+fn config_allowed_apps_remove(app_name: String) -> CommandOutput {
+    let entries: Vec<String> = config_allowed_apps_list().into_iter().filter(|e| e != app_name.trim()).collect();
+    let dir = bliss_config_dir();
+    let _ = fs::create_dir_all(&dir);
+    match fs::write(allowed_apps_path(), entries.join("\n") + "\n") {
+        Ok(_) => CommandOutput { success: true, stdout: String::new(), error: None },
+        Err(e) => CommandOutput { success: false, stdout: String::new(), error: Some(e.to_string()) },
+    }
+}
+
 // ── Setup state ──
 
 #[tauri::command]
@@ -1307,10 +1371,10 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // Spawn a timer thread to update the tray title
     let tray_handle = tray.clone();
     std::thread::spawn(move || {
-        let mut last_title = String::from("__init__");
+        let mut was_active = false;
         loop {
             std::thread::sleep(std::time::Duration::from_secs(1));
-            let title = match read_end_time() {
+            let (active, title) = match read_end_time() {
                 Some(end) => {
                     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
                     let rem = (end - now).max(0);
@@ -1318,26 +1382,30 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                         let h = rem / 3600;
                         let m = (rem % 3600) / 60;
                         let s = rem % 60;
-                        if h > 0 {
+                        let t = if h > 0 {
                             format!("{}:{:02}:{:02}", h, m, s)
                         } else {
                             format!("{:02}:{:02}", m, s)
-                        }
+                        };
+                        (true, t)
                     } else {
-                        String::new()
+                        // End time is in the past - clean up stale file
+                        let _ = fs::remove_file("/var/db/bliss_end_time");
+                        (false, String::new())
                     }
                 }
-                None => String::new(),
+                None => (false, String::new()),
             };
-            if title != last_title {
-                if title.is_empty() {
-                    // No active session - just show the icon, no text
-                    let _ = tray_handle.set_title(Option::<&str>::None);
-                } else {
-                    // Active session - show timer next to icon
-                    let _ = tray_handle.set_title(Some(&title));
-                }
-                last_title = title;
+
+            if active {
+                let _ = tray_handle.set_title(Some(&title));
+                was_active = true;
+            } else if was_active || !title.is_empty() {
+                // Session just ended or was ended - clear title
+                // Try both approaches to ensure it clears
+                let _ = tray_handle.set_title(Some(""));
+                let _ = tray_handle.set_title(Option::<&str>::None);
+                was_active = false;
             }
         }
     });
@@ -1399,6 +1467,11 @@ pub fn run() {
             config_whitelist_add,
             config_whitelist_remove,
             setup_complete_check,
+            config_app_block_mode_get,
+            config_app_block_mode_set,
+            config_allowed_apps_list,
+            config_allowed_apps_add,
+            config_allowed_apps_remove,
             config_challenge_get,
             config_challenge_set,
             app_boot,

@@ -66,7 +66,7 @@ cat > "${APP_DEST}/Contents/Info.plist" << 'BPLIST'
 <dict>
   <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>CFBundleExecutable</key><string>app</string>
-  <key>CFBundleIdentifier</key><string>com.bliss.desktop</string>
+  <key>CFBundleIdentifier</key><string>com.bliss.installed</string>
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
   <key>CFBundleName</key><string>Bliss</string>
   <key>CFBundlePackageType</key><string>APPL</string>

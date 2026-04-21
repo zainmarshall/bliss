@@ -70,18 +70,18 @@
         notified5min = false;
         sessionStartSecs = status.remaining_secs;
         let mins = Math.ceil(status.remaining_secs / 60);
-        invoke("send_notification", { title: "Focus session started", body: `${mins} minutes of deep work. You've got this.` });
+        invoke("send_notification", { title: "Bliss", body: `${mins} min session started` });
       }
-      if (status.active && status.remaining_secs <= 300 && status.remaining_secs > 0 && !notified5min) {
+      if (status.active && status.remaining_secs <= 300 && status.remaining_secs > 0 && !notified5min && sessionStartSecs > 300) {
         notified5min = true;
-        invoke("send_notification", { title: "5 minutes remaining", body: "Almost there. Finish strong." });
+        invoke("send_notification", { title: "Bliss", body: "5 minutes left" });
       }
       if (!status.active && prevActive && wasActive) {
         // Session ended - record actual elapsed time, not planned
         let elapsedSecs = sessionStartSecs - status.remaining_secs;
         let elapsedMins = Math.max(1, Math.round(elapsedSecs / 60));
         invoke("stats_record_session", { minutes: elapsedMins });
-        invoke("send_notification", { title: "Session complete", body: "Nice work. Take a break." });
+        invoke("send_notification", { title: "Bliss", body: "Session done" });
         notifiedStart = false;
         notified5min = false;
       }
