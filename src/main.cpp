@@ -26,6 +26,7 @@ using std::string;
 static const char* kLaunchdLabel = "com.bliss.timer";
 static const char* kLaunchdPlistPath = "/Library/LaunchDaemons/com.bliss.timer.plist";
 static const char* kEndTimePath = "/var/db/bliss_end_time";
+static const char* kPermaPath = "/var/db/bliss_perma";
 static const char* kMenubarLabel = "com.bliss.menubar";
 static const char* kRootHelperPlistPath = "/Library/LaunchDaemons/com.bliss.root.plist";
 static const char* kRootHelperPlistBackupPath = "/usr/local/share/bliss/com.bliss.root.plist";
@@ -33,6 +34,7 @@ static const char* kRootHelperPlistBackupPath = "/usr/local/share/bliss/com.blis
 static void print_usage(){
     std::cout
         << "bliss start <minutes>           Start a focus lock for N minutes\n"
+        << "bliss perma                     Start a permanent lock (only panic ends it; survives reboot)\n"
         << "bliss panic                     Early exit (typing or competitive challenge)\n"
         << "bliss status                    Show remaining time + firewall state\n"
         << "bliss repair                    Repair root helper + clear state (requires sudo)\n"
@@ -761,7 +763,20 @@ static bool read_end_time(long long& end_time){
     return !in.fail();
 }
 
+static bool perma_active(){
+    struct stat st{};
+    return stat(kPermaPath, &st) == 0;
+}
+
 static void print_status(){
+    if(perma_active()){
+        std::cout << "status: running (perma-ban)\n";
+        std::cout << "remaining: never (panic to end)\n";
+        if(geteuid() == 0){
+            std::cout << "pf table active: " << (is_firewall_block_active() ? "yes" : "no") << "\n";
+        }
+        return;
+    }
     long long end_time = 0;
     if(!read_end_time(end_time)){
         std::cout << "status: not running\n";
@@ -1050,10 +1065,79 @@ int main(int argc, char* argv[]){
         return 0;
     }
 
+    if(command == "perma"){
+        bool is_root = geteuid() == 0;
+        if(perma_active()){
+            std::cout << "[error] perma-ban already active; use panic to end it\n";
+            return 1;
+        }
+        long long existing_end = 0;
+        if(read_end_time(existing_end)){
+            auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+            if(existing_end > static_cast<long long>(now)){
+                std::cout << "[error] session already running; wait or use panic\n";
+                return 1;
+            }
+            remove_firewall_block();
+            remove_hosts_block();
+            remove_end_time();
+        }
+        if(!is_root){
+            std::string cfg = get_config_path();
+            if(!send_to_root_helper("perma " + cfg)){
+                return 1;
+            }
+            std::vector<std::string> domains;
+            load_block_list(domains);
+            std::cout << "perma-ban started (only panic ends it)\n";
+            std::cout << "blocking " << domains.size() << " domains\n";
+            return 0;
+        }
+        remove_hosts_block();
+        if(!apply_firewall_block()){
+            return 1;
+        }
+        kill_browser_apps();
+        drop_web_states();
+        if(!apply_hosts_block()){
+            return 1;
+        }
+        remove_end_time();
+        {
+            std::ofstream out(kPermaPath, std::ios::trunc);
+            if(!out.is_open()){
+                std::cout << "[error] unable to write " << kPermaPath << " (try running with sudo)\n";
+                return 1;
+            }
+            out << "1\n";
+        }
+        if(is_launchd_job_loaded()){
+            if(!plist_uses_absolute_blissd()){
+                unload_launchd_job();
+            }
+        }
+        if(!is_launchd_job_loaded()){
+            string blissd_path = find_blissd_path(argv[0]);
+            if(blissd_path.empty()){
+                std::cout << "[error] unable to find blissd (install or use absolute path)\n";
+                return 1;
+            }
+            // blissd checks the perma flag at launch and blocks indefinitely.
+            if(!install_launchd_job(0, blissd_path)){
+                return 1;
+            }
+        }
+        std::vector<std::string> domains;
+        load_block_list(domains);
+        std::cout << "perma-ban started (only panic ends it)\n";
+        std::cout << "blocking " << domains.size() << " domains\n";
+        return 0;
+    }
+
     if(command == "panic"){
         bool is_root = geteuid() == 0;
         long long end_time = 0;
-        if(!read_end_time(end_time)){
+        if(!read_end_time(end_time) && !perma_active()){
             std::cout << "no active session; nothing to panic\n";
             return 0;
         }
@@ -1095,6 +1179,7 @@ int main(int argc, char* argv[]){
             return 0;
         }
         unload_launchd_job();
+        std::remove(kPermaPath);
         remove_end_time();
         if(!remove_hosts_block()){
             return 1;
@@ -1117,6 +1202,7 @@ int main(int argc, char* argv[]){
             return 1;
         }
         unload_launchd_job();
+        std::remove(kPermaPath);
         remove_end_time();
         remove_hosts_block();
         deep_remove_firewall_block();
@@ -1150,6 +1236,10 @@ int main(int argc, char* argv[]){
             return 1;
         }
         bool is_root = geteuid() == 0;
+        if(perma_active()){
+            std::cout << "[error] config is locked while a session is active\n";
+            return 1;
+        }
         long long end_time = 0;
         if(read_end_time(end_time)){
             auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());

@@ -20,6 +20,7 @@
   let tab = $state("session"); // "session" | "schedule" | "stats" | "settings"
   let panicMode = $state("typing");
   let sessionActive = $state(false);
+  let sessionPerma = $state(false);
   let remaining = $state("00:00");
   let remainingSecs = $state(0);
   let lastMinute = $state(false);
@@ -28,6 +29,7 @@
   let statusLabel = $state("Inactive");
   let pollInterval;
   let wasActive = false;
+  let wasPerma = false;
   let notifiedStart = false;
   let notified5min = false;
   let sessionStartSecs = 0; // total duration when session started
@@ -59,24 +61,28 @@
       let status = await invoke("get_session_status");
       let prevActive = sessionActive;
       sessionActive = status.active;
+      sessionPerma = status.perma;
       remaining = status.remaining;
       remainingSecs = status.remaining_secs;
-      statusLabel = status.active ? "Active" : "Inactive";
-      lastMinute = status.active && status.remaining_secs > 0 && status.remaining_secs <= 60;
+      statusLabel = status.perma ? "Perma-ban" : status.active ? "Active" : "Inactive";
+      lastMinute = status.active && !status.perma && status.remaining_secs > 0 && status.remaining_secs <= 60;
 
-      // Notifications + stats
-      if (status.active && !prevActive && !notifiedStart) {
+      // Notifications + stats (skip for perma - no countdown / elapsed tracking)
+      if (status.active && status.perma && !prevActive && !notifiedStart) {
+        notifiedStart = true;
+        invoke("send_notification", { title: "Bliss", body: "Perma-ban started" });
+      } else if (status.active && !status.perma && !prevActive && !notifiedStart) {
         notifiedStart = true;
         notified5min = false;
         sessionStartSecs = status.remaining_secs;
         let mins = Math.ceil(status.remaining_secs / 60);
         invoke("send_notification", { title: "Bliss", body: `${mins} min session started` });
       }
-      if (status.active && status.remaining_secs <= 300 && status.remaining_secs > 0 && !notified5min && sessionStartSecs > 300) {
+      if (status.active && !status.perma && status.remaining_secs <= 300 && status.remaining_secs > 0 && !notified5min && sessionStartSecs > 300) {
         notified5min = true;
         invoke("send_notification", { title: "Bliss", body: "5 minutes left" });
       }
-      if (!status.active && prevActive && wasActive) {
+      if (!status.active && prevActive && wasActive && !wasPerma) {
         // Session ended - record actual elapsed time, not planned
         let elapsedSecs = sessionStartSecs - status.remaining_secs;
         let elapsedMins = Math.max(1, Math.round(elapsedSecs / 60));
@@ -86,6 +92,7 @@
         notified5min = false;
       }
       wasActive = status.active;
+      wasPerma = status.perma;
 
       // Schedule check (every minute)
       if (!status.active) {
@@ -103,24 +110,23 @@
     lastScheduleCheck = key;
 
     try {
-      let schedules = await invoke("schedule_list");
-      let dayOfWeek = now.getDay(); // 0=Sun
-      let weekday = dayOfWeek === 0 ? 1 : dayOfWeek + 1; // 1=Sun, 2=Mon, ...
+      let blocks = await invoke("schedule_list");
+      let jsDay = now.getDay(); // 0=Sun
+      let dayIndex = jsDay === 0 ? 6 : jsDay - 1; // 0=Mon..6=Sun
       let hour = now.getHours();
       let minute = now.getMinutes();
 
-      for (let s of schedules) {
-        if (!s.enabled) continue;
-        if (!s.days.includes(weekday)) continue;
-        if (s.hour !== hour || s.minute !== minute) continue;
+      for (let b of blocks) {
+        if (!b.enabled) continue;
+        if (b.startDay !== dayIndex || b.startHour !== hour || b.startMinute !== minute) continue;
 
-        // Fire this schedule - apply its config then start session
-        let profiles = await invoke("profile_list");
-        let profile = profiles.find(p => p.name === s.configName);
-        if (profile) {
-          await invoke("profile_apply", { profile });
-        }
-        await invoke("start_session", { seconds: s.durationMinutes * 60 });
+        // Calculate duration from start to end
+        let startTotal = b.startDay * 1440 + b.startHour * 60 + b.startMinute;
+        let endTotal = b.endDay * 1440 + b.endHour * 60 + b.endMinute;
+        let durationMins = endTotal - startTotal;
+        if (durationMins <= 0) durationMins += 7 * 1440; // wrap around week
+
+        await invoke("start_session", { seconds: durationMins * 60 });
         await pollStatus();
         break;
       }
@@ -146,6 +152,25 @@
     if (secs <= 0) secs = 25 * 60;
     try {
       let result = await invoke("start_session", { seconds: secs });
+      if (result.error) {
+        errorMsg = result.error;
+      } else {
+        timerDigits = [];
+        await pollStatus();
+      }
+    } catch (e) {
+      errorMsg = String(e);
+    }
+  }
+
+  async function startPerma() {
+    errorMsg = "";
+    let ok = confirm(
+      "Start a PERMA-BAN?\n\nThis lock never expires on its own and survives restarts. The only way to turn it off is to Panic (complete the challenge). There is no timer.\n\nContinue?"
+    );
+    if (!ok) return;
+    try {
+      let result = await invoke("start_perma_session");
       if (result.error) {
         errorMsg = result.error;
       } else {
@@ -285,7 +310,10 @@
           <p class="status" class:active={sessionActive}>{statusLabel}</p>
 
           {#if sessionActive}
-            <div class="timer">{remaining}</div>
+            <div class="timer" class:perma={sessionPerma}>{remaining}</div>
+            {#if sessionPerma}
+              <p class="perma-note">Never expires. Panic to end.</p>
+            {/if}
             <button class="panic-btn" onclick={openPanic}>Panic</button>
           {:else}
             <div class="timer-input">
@@ -311,6 +339,7 @@
               {/each}
             </div>
             <button class="start-btn" onclick={startSession}>Start</button>
+            <button class="perma-btn" onclick={startPerma}>Perma-ban</button>
           {/if}
         </div>
       </div>
@@ -459,6 +488,18 @@
     transition: color 0.3s;
   }
 
+  .timer.perma {
+    color: #ec4899;
+    font-size: 72px;
+    line-height: 1;
+  }
+
+  .perma-note {
+    font-size: 12px;
+    color: #999;
+    margin: 0 0 4px;
+  }
+
   .timer-input {
     display: flex;
     align-items: center;
@@ -522,6 +563,24 @@
 
   .start-btn:active {
     background: #be185d;
+  }
+
+  .perma-btn {
+    margin-top: 10px;
+    padding: 6px 20px;
+    font-size: 13px;
+    font-weight: 500;
+    background: none;
+    color: #999;
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .perma-btn:hover {
+    color: #ec4899;
+    border-color: #ec4899;
   }
 
   .panic-btn {

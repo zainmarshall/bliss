@@ -9,6 +9,12 @@
 #include <sstream>
 
 static const char* kEndTimePath = "/var/db/bliss_end_time";
+static const char* kPermaPath = "/var/db/bliss_perma";
+
+static bool perma_active(){
+    struct stat st{};
+    return stat(kPermaPath, &st) == 0;
+}
 
 static bool read_end_time(long long& end_time){
     std::ifstream in(kEndTimePath);
@@ -73,6 +79,21 @@ int main(int argc, char* argv[]){
     if(argc >= 3){
         set_config_path_override(argv[2]);
     }
+    // Perma-ban: block indefinitely. Only `panic` clears the flag (which also
+    // boots out this launchd job, terminating the process). Survives reboot via
+    // launchd RunAtLoad + the on-disk flag file.
+    if(perma_active()){
+        apply_firewall_block();
+        while(perma_active()){
+            kill_blocked_apps();
+            std::this_thread::sleep_for(std::chrono::seconds(3));
+        }
+        remove_hosts_block();
+        remove_firewall_block();
+        std::cout << "[blissd] perma cleared, unblocked\n";
+        return 0;
+    }
+
     long long end_time = 0;
     if(!read_end_time(end_time)){
         if(argc < 2){

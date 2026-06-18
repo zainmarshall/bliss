@@ -33,6 +33,7 @@ rm -rf /usr/local/share/bliss
 
 rm -rf "${USER_HOME}/.config/bliss"
 rm -f /var/db/bliss_end_time
+rm -f /var/db/bliss_perma
 
 rm -f /etc/pf.anchors/bliss
 /sbin/pfctl -t bliss_block -T flush >/dev/null 2>&1 || true

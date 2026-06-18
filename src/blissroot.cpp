@@ -21,6 +21,7 @@ static const char* kSocketPath = "/var/run/bliss.sock";
 static const char* kLaunchdLabel = "com.bliss.timer";
 static const char* kLaunchdPlistPath = "/Library/LaunchDaemons/com.bliss.timer.plist";
 static const char* kEndTimePath = "/var/db/bliss_end_time";
+static const char* kPermaPath = "/var/db/bliss_perma";
 
 static void log_line(const std::string& msg){
     std::ofstream out("/tmp/blissroot.out", std::ios::app);
@@ -64,6 +65,24 @@ static bool write_end_time(int minutes){
 
 static void remove_end_time(){
     std::remove(kEndTimePath);
+}
+
+static bool perma_active(){
+    struct stat st{};
+    return stat(kPermaPath, &st) == 0;
+}
+
+static bool write_perma_flag(){
+    std::ofstream out(kPermaPath, std::ios::trunc);
+    if(!out.is_open()){
+        return false;
+    }
+    out << "1\n";
+    return true;
+}
+
+static void remove_perma_flag(){
+    std::remove(kPermaPath);
 }
 
 static bool is_launchd_job_loaded(){
@@ -137,6 +156,10 @@ static bool cleanup_if_stale(){
 static bool handle_start(int total_seconds, const std::string& config_path, std::string& out_msg){
     int minutes = (total_seconds + 59) / 60; // for launchd job
     log_line("handle_start called");
+    if(perma_active()){
+        out_msg = "error: perma-ban active; use panic to end it\n";
+        return false;
+    }
     if(!config_path.empty()){
         set_config_path_override(config_path);
     }
@@ -182,9 +205,58 @@ static bool handle_start(int total_seconds, const std::string& config_path, std:
     return true;
 }
 
+static bool handle_perma(const std::string& config_path, std::string& out_msg){
+    log_line("handle_perma called");
+    if(!config_path.empty()){
+        set_config_path_override(config_path);
+    }
+    cleanup_if_stale();
+    // Refuse if a timed session is still live.
+    if(is_launchd_job_loaded() && !perma_active()){
+        long long end_time = 0;
+        if(read_end_time(end_time)){
+            auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+            if(end_time > static_cast<long long>(now)){
+                out_msg = "error: session already running; wait or use panic\n";
+                return false;
+            }
+        }
+        remove_end_time();
+        unload_launchd_job();
+    }
+    remove_hosts_block();
+    if(!apply_firewall_block()){
+        log_line("apply_firewall_block failed");
+        out_msg = "error: firewall block failed (see /tmp/blissroot.err)\n";
+        return false;
+    }
+    kill_browser_apps();
+    drop_web_states();
+    if(!apply_hosts_block()){
+        log_line("apply_hosts_block failed");
+        out_msg = "error: hosts block failed (see /tmp/blissroot.err)\n";
+        return false;
+    }
+    // No end_time for perma; the flag is the source of truth.
+    remove_end_time();
+    if(!write_perma_flag()){
+        out_msg = "error: perma flag write failed (see /tmp/blissroot.err)\n";
+        return false;
+    }
+    // blissd checks the flag at launch and loops forever; minutes arg is ignored.
+    if(!install_launchd_job(0, config_path)){
+        remove_perma_flag();
+        out_msg = "error: launchd install failed (see /tmp/blissroot.err)\n";
+        return false;
+    }
+    out_msg = "ok";
+    return true;
+}
+
 static bool handle_panic(std::string& out_msg){
     log_line("handle_panic called");
     unload_launchd_job();
+    remove_perma_flag();
     remove_end_time();
     if(!remove_hosts_block()){
         out_msg = "error: hosts unblock failed";
@@ -267,6 +339,14 @@ static bool handle_line(const std::string& line, std::string& out_msg){
         }
         int total_seconds = use_seconds ? value : value * 60;
         return handle_start(total_seconds, cfg_path, out_msg);
+    }
+    if(cmd == "perma"){
+        std::string cfg_path;
+        std::getline(iss, cfg_path);
+        if(!cfg_path.empty() && cfg_path[0] == ' '){
+            cfg_path.erase(0, cfg_path.find_first_not_of(' '));
+        }
+        return handle_perma(cfg_path, out_msg);
     }
     if(cmd == "panic"){
         return handle_panic(out_msg);

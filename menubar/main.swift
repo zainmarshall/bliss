@@ -1,6 +1,7 @@
 import Cocoa
 
 let endTimePath = "/var/db/bliss_end_time"
+let permaPath = "/var/db/bliss_perma"
 
 final class BlissStatusBar {
     private let statusItem: NSStatusItem
@@ -74,6 +75,10 @@ final class BlissStatusBar {
     }
 
     private func updateTitle() {
+        if FileManager.default.fileExists(atPath: permaPath) {
+            statusItem.button?.title = "Bliss ∞"
+            return
+        }
         guard let endTime = readEndTime() else {
             statusItem.button?.title = "Bliss --:--"
             return
