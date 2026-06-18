@@ -1,23 +1,8 @@
 use serde::Serialize;
 use std::fs;
 use std::process::Command;
-use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Manager;
-
-static TRAY_HANDLE: Mutex<Option<tauri::tray::TrayIcon>> = Mutex::new(None);
-
-fn update_tray(remaining: &str) {
-    if let Ok(guard) = TRAY_HANDLE.lock() {
-        if let Some(ref tray) = *guard {
-            if remaining.is_empty() {
-                let _ = tray.set_title(Some(""));
-            } else {
-                let _ = tray.set_title(Some(remaining));
-            }
-        }
-    }
-}
 
 #[derive(Serialize)]
 struct SessionStatus {
@@ -324,7 +309,6 @@ fn get_session_status() -> SessionStatus {
         .as_secs() as i64;
 
     if perma_active() {
-        update_tray("∞");
         return SessionStatus {
             active: true,
             remaining: "∞".to_string(),
@@ -345,7 +329,6 @@ fn get_session_status() -> SessionStatus {
                 } else {
                     format!("{:02}:{:02}", m, s)
                 };
-                update_tray(&formatted);
                 SessionStatus {
                     active: true,
                     remaining: formatted,
@@ -353,8 +336,8 @@ fn get_session_status() -> SessionStatus {
                     perma: false,
                 }
             } else {
+                // Stale end_time file - session is over, clean up
                 let _ = fs::remove_file("/var/db/bliss_end_time");
-                update_tray("");
                 SessionStatus {
                     active: false,
                     remaining: String::new(),
@@ -363,15 +346,12 @@ fn get_session_status() -> SessionStatus {
                 }
             }
         }
-        None => {
-            update_tray("");
-            SessionStatus {
-                active: false,
-                remaining: String::new(),
-                remaining_secs: 0,
-                perma: false,
-            }
-        }
+        None => SessionStatus {
+            active: false,
+            remaining: String::new(),
+            remaining_secs: 0,
+            perma: false,
+        },
     }
 }
 
@@ -1074,89 +1054,33 @@ fn stats_record_session(minutes: u32) -> CommandOutput {
 
 // ── Scheduling ──
 
-// New format: time-range blocks, no config name dependency
 #[derive(Serialize, serde::Deserialize, Clone)]
-struct ScheduleBlock {
+struct ScheduleEntry {
     id: String,
-    #[serde(rename = "startDay")]
-    start_day: u8,      // 0=Mon, 1=Tue, ..., 6=Sun
-    #[serde(rename = "startHour")]
-    start_hour: u8,
-    #[serde(rename = "startMinute")]
-    start_minute: u8,
-    #[serde(rename = "endDay")]
-    end_day: u8,
-    #[serde(rename = "endHour")]
-    end_hour: u8,
-    #[serde(rename = "endMinute")]
-    end_minute: u8,
-    enabled: bool,
-}
-
-// Keep old format for migration
-#[derive(serde::Deserialize)]
-struct OldScheduleEntry {
-    #[serde(default)]
-    id: String,
-    #[serde(rename = "configName", default)]
+    #[serde(rename = "configName")]
     config_name: String,
-    #[serde(default)]
-    days: Vec<u8>,
-    #[serde(default)]
-    hour: u8,
-    #[serde(default)]
-    minute: u8,
-    #[serde(rename = "durationMinutes", default)]
+    days: Vec<u8>,      // 1=Sun, 2=Mon, ..., 7=Sat
+    hour: u8,           // 0-23
+    minute: u8,         // 0-59
+    #[serde(rename = "durationMinutes")]
     duration_minutes: u32,
-    #[serde(default = "default_true")]
     enabled: bool,
 }
-
-fn default_true() -> bool { true }
 
 fn schedules_path() -> String {
     format!("{}/schedules.json", bliss_config_dir())
 }
 
 #[tauri::command]
-fn schedule_list() -> Vec<ScheduleBlock> {
-    let data = match fs::read_to_string(schedules_path()) {
-        Ok(d) => d,
-        Err(_) => return vec![],
-    };
-    // Try new format first
-    if let Ok(blocks) = serde_json::from_str::<Vec<ScheduleBlock>>(&data) {
-        return blocks;
-    }
-    // Migrate old format
-    if let Ok(old_entries) = serde_json::from_str::<Vec<OldScheduleEntry>>(&data) {
-        let mut blocks = Vec::new();
-        for entry in old_entries {
-            let end_total = (entry.hour as u32) * 60 + (entry.minute as u32) + entry.duration_minutes;
-            let end_h = ((end_total / 60) % 24) as u8;
-            let end_m = (end_total % 60) as u8;
-            for &day in &entry.days {
-                // Old: 1=Sun,2=Mon..7=Sat -> New: 0=Mon..6=Sun
-                let new_day = if day == 1 { 6 } else { (day - 2) as u8 };
-                let end_day = if end_total >= 1440 { (new_day + 1) % 7 } else { new_day };
-                blocks.push(ScheduleBlock {
-                    id: format!("{}-{}", entry.id, day),
-                    start_day: new_day, start_hour: entry.hour, start_minute: entry.minute,
-                    end_day, end_hour: end_h, end_minute: end_m, enabled: entry.enabled,
-                });
-            }
-        }
-        // Save migrated data
-        if let Ok(json) = serde_json::to_string_pretty(&blocks) {
-            let _ = fs::write(schedules_path(), json);
-        }
-        return blocks;
-    }
-    vec![]
+fn schedule_list() -> Vec<ScheduleEntry> {
+    fs::read_to_string(schedules_path())
+        .ok()
+        .and_then(|d| serde_json::from_str(&d).ok())
+        .unwrap_or_default()
 }
 
 #[tauri::command]
-fn schedule_save(entries: Vec<ScheduleBlock>) -> CommandOutput {
+fn schedule_save(entries: Vec<ScheduleEntry>) -> CommandOutput {
     let dir = bliss_config_dir();
     let _ = fs::create_dir_all(&dir);
     match serde_json::to_string_pretty(&entries) {
@@ -1172,18 +1096,17 @@ fn schedule_save(entries: Vec<ScheduleBlock>) -> CommandOutput {
 
 #[tauri::command]
 fn send_notification(title: String, body: String) -> CommandOutput {
+    // Use "tell app" to attribute notification to Bliss (shows our icon)
     let script = format!(
-        "display notification \"{}\" with title \"{}\"",
+        "tell application \"Bliss\" to display notification \"{}\" with title \"{}\"",
         body.replace('\\', "\\\\").replace('"', "\\\""),
         title.replace('\\', "\\\\").replace('"', "\\\"")
     );
-    // Fire and forget - don't block on notification delivery
-    let _ = Command::new("osascript")
-        .args(["-e", &script])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
-    CommandOutput { success: true, stdout: String::new(), error: None }
+    let result = Command::new("osascript").args(["-e", &script]).output();
+    match result {
+        Ok(_) => CommandOutput { success: true, stdout: String::new(), error: None },
+        Err(e) => CommandOutput { success: false, stdout: String::new(), error: Some(e.to_string()) },
+    }
 }
 
 // ── Whitelist / Block Mode ──
@@ -1469,10 +1392,47 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         })
         .build(app)?;
 
-    // Store tray handle so get_session_status can update it directly
-    if let Ok(mut guard) = TRAY_HANDLE.lock() {
-        *guard = Some(tray);
-    }
+    // Spawn a timer thread to update the tray title
+    let tray_handle = tray.clone();
+    std::thread::spawn(move || {
+        let mut was_active = false;
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            let (active, title) = match read_end_time() {
+                Some(end) => {
+                    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+                    let rem = (end - now).max(0);
+                    if rem > 0 {
+                        let h = rem / 3600;
+                        let m = (rem % 3600) / 60;
+                        let s = rem % 60;
+                        let t = if h > 0 {
+                            format!("{}:{:02}:{:02}", h, m, s)
+                        } else {
+                            format!("{:02}:{:02}", m, s)
+                        };
+                        (true, t)
+                    } else {
+                        // End time is in the past - clean up stale file
+                        let _ = fs::remove_file("/var/db/bliss_end_time");
+                        (false, String::new())
+                    }
+                }
+                None => (false, String::new()),
+            };
+
+            if active {
+                let _ = tray_handle.set_title(Some(&title));
+                was_active = true;
+            } else if was_active || !title.is_empty() {
+                // Session just ended or was ended - clear title
+                // Try both approaches to ensure it clears
+                let _ = tray_handle.set_title(Some(""));
+                let _ = tray_handle.set_title(Option::<&str>::None);
+                was_active = false;
+            }
+        }
+    });
 
     Ok(())
 }

@@ -67,7 +67,7 @@
       statusLabel = status.perma ? "Perma-ban" : status.active ? "Active" : "Inactive";
       lastMinute = status.active && !status.perma && status.remaining_secs > 0 && status.remaining_secs <= 60;
 
-      // Notifications + stats (skip for perma - no countdown / elapsed tracking)
+      // Notifications + stats (perma has no countdown / elapsed tracking)
       if (status.active && status.perma && !prevActive && !notifiedStart) {
         notifiedStart = true;
         invoke("send_notification", { title: "Bliss", body: "Perma-ban started" });
@@ -91,6 +91,7 @@
         notifiedStart = false;
         notified5min = false;
       }
+      if (!status.active) notifiedStart = false;
       wasActive = status.active;
       wasPerma = status.perma;
 
@@ -110,23 +111,24 @@
     lastScheduleCheck = key;
 
     try {
-      let blocks = await invoke("schedule_list");
-      let jsDay = now.getDay(); // 0=Sun
-      let dayIndex = jsDay === 0 ? 6 : jsDay - 1; // 0=Mon..6=Sun
+      let schedules = await invoke("schedule_list");
+      let dayOfWeek = now.getDay(); // 0=Sun
+      let weekday = dayOfWeek === 0 ? 1 : dayOfWeek + 1; // 1=Sun, 2=Mon, ...
       let hour = now.getHours();
       let minute = now.getMinutes();
 
-      for (let b of blocks) {
-        if (!b.enabled) continue;
-        if (b.startDay !== dayIndex || b.startHour !== hour || b.startMinute !== minute) continue;
+      for (let s of schedules) {
+        if (!s.enabled) continue;
+        if (!s.days.includes(weekday)) continue;
+        if (s.hour !== hour || s.minute !== minute) continue;
 
-        // Calculate duration from start to end
-        let startTotal = b.startDay * 1440 + b.startHour * 60 + b.startMinute;
-        let endTotal = b.endDay * 1440 + b.endHour * 60 + b.endMinute;
-        let durationMins = endTotal - startTotal;
-        if (durationMins <= 0) durationMins += 7 * 1440; // wrap around week
-
-        await invoke("start_session", { seconds: durationMins * 60 });
+        // Fire this schedule - apply its config then start session
+        let profiles = await invoke("profile_list");
+        let profile = profiles.find(p => p.name === s.configName);
+        if (profile) {
+          await invoke("profile_apply", { profile });
+        }
+        await invoke("start_session", { seconds: s.durationMinutes * 60 });
         await pollStatus();
         break;
       }
