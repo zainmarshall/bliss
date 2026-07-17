@@ -1,4 +1,4 @@
-# Bliss v0.5.0
+# Bliss v0.6.0
 
 macOS focus lock — blocks websites & apps, makes you solve a challenge to escape early.
 
@@ -13,7 +13,7 @@ macOS focus lock — blocks websites & apps, makes you solve a challenge to esca
 GitHub: https://github.com/zainmarshall/bliss
 
 ```
-curl -fsSL "https://github.com/zainmarshall/bliss/releases/download/v0.5.0/bliss-macos-universal.zip" -o /tmp/bliss.zip && rm -rf /tmp/bliss && mkdir -p /tmp/bliss && unzip -q /tmp/bliss.zip -d /tmp/bliss && bash /tmp/bliss/bliss_release/scripts/install.sh
+curl -fsSL "https://github.com/zainmarshall/bliss/releases/download/v0.6.0/bliss-macos-universal.zip" -o /tmp/bliss.zip && rm -rf /tmp/bliss && mkdir -p /tmp/bliss && unzip -q /tmp/bliss.zip -d /tmp/bliss && bash /tmp/bliss/bliss_release/scripts/install.sh
 ```
 
 ## Video
