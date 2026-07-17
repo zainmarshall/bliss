@@ -1109,18 +1109,19 @@ fn schedule_save(entries: Vec<ScheduleEntry>) -> CommandOutput {
 // ── Notifications ──
 
 #[tauri::command]
-fn send_notification(title: String, body: String) -> CommandOutput {
+fn send_notification(title: String, body: String) {
     // Use "tell app" to attribute notification to Bliss (shows our icon)
     let script = format!(
         "tell application \"Bliss\" to display notification \"{}\" with title \"{}\"",
         body.replace('\\', "\\\\").replace('"', "\\\""),
         title.replace('\\', "\\\\").replace('"', "\\\"")
     );
-    let result = Command::new("osascript").args(["-e", &script]).output();
-    match result {
-        Ok(_) => CommandOutput { success: true, stdout: String::new(), error: None },
-        Err(e) => CommandOutput { success: false, stdout: String::new(), error: Some(e.to_string()) },
-    }
+    // Fire and forget on a background thread. osascript can take seconds (it talks to
+    // Notification Center); blocking here would freeze the UI thread since this is a
+    // synchronous command. spawn_blocking also reaps the child so it doesn't zombie.
+    tauri::async_runtime::spawn_blocking(move || {
+        let _ = Command::new("osascript").args(["-e", &script]).output();
+    });
 }
 
 // ── Whitelist / Block Mode ──
