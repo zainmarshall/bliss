@@ -303,7 +303,26 @@
     let key = `${r},${c}`;
     if (lastDragCell === key) return;
     lastDragCell = key;
-    extendPath(activeFlow, r, c);
+
+    // A fast drag reports a pointer position several cells away from the last one.
+    // extendPath only accepts single orthogonal steps, so walk toward the target one
+    // cell at a time (row first, then column) to fill in the skipped cells.
+    let guard = 0;
+    while (activeFlow !== null && !won && guard++ < 400) {
+      let path = paths[activeFlow];
+      if (!path || path.length === 0) break;
+      let last = path[path.length - 1];
+      if (last[0] === r && last[1] === c) break;
+      let nr = last[0], nc = last[1];
+      if (nr !== r) nr += r > nr ? 1 : -1;
+      else nc += c > nc ? 1 : -1;
+      extendPath(activeFlow, nr, nc);
+      // If extendPath refused the step (blocked cell), stop to avoid spinning.
+      if (activeFlow === null) break;
+      let after = paths[activeFlow];
+      let newLast = after[after.length - 1];
+      if (newLast[0] === last[0] && newLast[1] === last[1]) break;
+    }
   }
 
   function handlePointerUp(e) {
