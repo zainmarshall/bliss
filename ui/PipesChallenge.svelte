@@ -276,6 +276,8 @@
     if (won) return;
     let pos = getCellFromEvent(e);
     if (!pos) return;
+    e.preventDefault();
+    try { gridEl.setPointerCapture(e.pointerId); } catch {}
     let [r, c] = pos;
     lastDragCell = `${r},${c}`;
     let cell = grid[r][c];
@@ -292,6 +294,7 @@
 
   function handlePointerMove(e) {
     if (activeFlow === null || won) return;
+    e.preventDefault();
     let pos = getCellFromEvent(e);
     if (!pos) return;
     let [r, c] = pos;
@@ -301,7 +304,8 @@
     extendPath(activeFlow, r, c);
   }
 
-  function handlePointerUp() {
+  function handlePointerUp(e) {
+    try { if (e && e.pointerId !== undefined) gridEl.releasePointerCapture(e.pointerId); } catch {}
     if (activeFlow !== null) {
       if (!isPathComplete(activeFlow)) {
         clearPath(activeFlow);
@@ -445,7 +449,7 @@
       onpointerdown={handlePointerDown}
       onpointermove={handlePointerMove}
       onpointerup={handlePointerUp}
-      onpointerleave={handlePointerUp}
+      onpointercancel={handlePointerUp}
     >
       <div class="grid" style="grid-template-columns: repeat({gridSize}, 1fr)">
         {#each grid as row, r}
@@ -534,6 +538,8 @@
     border-radius: 8px;
     overflow: hidden;
     touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
     cursor: crosshair;
   }
 
