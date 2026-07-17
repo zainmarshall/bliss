@@ -2,18 +2,23 @@
   import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { Timer, Settings as SettingsIcon, Calendar, BarChart3 } from "lucide-svelte";
-  import TypingChallenge from "./TypingChallenge.svelte";
-  import MinesweeperChallenge from "./MinesweeperChallenge.svelte";
-  import WordleChallenge from "./WordleChallenge.svelte";
-  import Game2048Challenge from "./Game2048Challenge.svelte";
-  import SudokuChallenge from "./SudokuChallenge.svelte";
-  import SimonSaysChallenge from "./SimonSaysChallenge.svelte";
-  import PipesChallenge from "./PipesChallenge.svelte";
-  import CompetitiveChallenge from "./CompetitiveChallenge.svelte";
-  import Settings from "./Settings.svelte";
-  import Schedule from "./Schedule.svelte";
-  import Stats from "./Stats.svelte";
-  import GuidedSetup from "./GuidedSetup.svelte";
+
+  // Heavy views are lazy-loaded so they stay out of the initial bundle
+  // (CodeMirror alone is hundreds of KB). Dynamic imports are cached by the
+  // module loader, so switching back to a view after the first time is instant.
+  const panicLoaders = {
+    minesweeper: () => import("./MinesweeperChallenge.svelte"),
+    wordle: () => import("./WordleChallenge.svelte"),
+    "2048": () => import("./Game2048Challenge.svelte"),
+    sudoku: () => import("./SudokuChallenge.svelte"),
+    simon: () => import("./SimonSaysChallenge.svelte"),
+    pipes: () => import("./PipesChallenge.svelte"),
+    competitive: () => import("./CompetitiveChallenge.svelte"),
+    typing: () => import("./TypingChallenge.svelte"),
+  };
+  function loadPanic(mode) {
+    return (panicLoaders[mode] || panicLoaders.typing)().then((m) => m.default);
+  }
 
   let view = $state("loading"); // "loading" | "main" | "panic"
   let showSetup = $state(false);
@@ -256,29 +261,17 @@
 
 <div class="app">
   {#if showSetup}
-    <GuidedSetup onComplete={handleSetupComplete} />
+    {#await import("./GuidedSetup.svelte") then { default: GuidedSetup }}
+      <GuidedSetup onComplete={handleSetupComplete} />
+    {/await}
   {/if}
 
   {#if view === "loading"}
     <div class="loading"></div>
   {:else if view === "panic"}
-    {#if panicMode === "minesweeper"}
-      <MinesweeperChallenge onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
-    {:else if panicMode === "wordle"}
-      <WordleChallenge onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
-    {:else if panicMode === "2048"}
-      <Game2048Challenge onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
-    {:else if panicMode === "sudoku"}
-      <SudokuChallenge onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
-    {:else if panicMode === "simon"}
-      <SimonSaysChallenge onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
-    {:else if panicMode === "pipes"}
-      <PipesChallenge onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
-    {:else if panicMode === "competitive"}
-      <CompetitiveChallenge onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
-    {:else}
-      <TypingChallenge onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
-    {/if}
+    {#await loadPanic(panicMode) then Panic}
+      <Panic onSuccess={handlePanicSuccess} onCancel={cancelPanic} />
+    {/await}
   {:else}
     <div class="tab-bar">
       <button class="tab" class:active={tab === "session"} data-tab="session" onclick={() => (tab = "session")}>
@@ -364,11 +357,17 @@
         </div>
       </div>
     {:else if tab === "schedule"}
-      <Schedule {sessionActive} />
+      {#await import("./Schedule.svelte") then { default: Schedule }}
+        <Schedule {sessionActive} />
+      {/await}
     {:else if tab === "stats"}
-      <Stats />
+      {#await import("./Stats.svelte") then { default: Stats }}
+        <Stats />
+      {/await}
     {:else}
-      <Settings {sessionActive} />
+      {#await import("./Settings.svelte") then { default: Settings }}
+        <Settings {sessionActive} />
+      {/await}
     {/if}
   {/if}
 </div>
