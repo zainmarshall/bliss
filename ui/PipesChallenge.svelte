@@ -268,7 +268,9 @@
     let clientY = e.touches ? e.touches[0].clientY : e.clientY;
     let col = Math.floor((clientX - rect.left) / cellW);
     let row = Math.floor((clientY - rect.top) / cellH);
-    if (row < 0 || row >= gridSize || col < 0 || col >= gridSize) return null;
+    // Clamp to the grid so edge cells stay reachable even with sub-pixel overshoot.
+    row = Math.max(0, Math.min(gridSize - 1, row));
+    col = Math.max(0, Math.min(gridSize - 1, col));
     return [row, col];
   }
 
@@ -534,6 +536,10 @@
 
   .grid-wrapper {
     position: relative;
+    /* Keep the square grid inside the viewport so the top/bottom rows and the
+       buttons below it never get pushed off-screen. */
+    width: min(100%, calc(100vh - 200px));
+    align-self: center;
     aspect-ratio: 1;
     border-radius: 8px;
     overflow: hidden;
