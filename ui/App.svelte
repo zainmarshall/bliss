@@ -21,6 +21,7 @@
   let panicMode = $state("typing");
   let sessionActive = $state(false);
   let sessionPerma = $state(false);
+  let showPermaConfirm = $state(false);
   let remaining = $state("00:00");
   let remainingSecs = $state(0);
   let lastMinute = $state(false);
@@ -165,12 +166,13 @@
     }
   }
 
-  async function startPerma() {
+  function startPerma() {
     errorMsg = "";
-    let ok = confirm(
-      "Start a PERMA-BAN?\n\nThis lock never expires on its own and survives restarts. The only way to turn it off is to Panic (complete the challenge). There is no timer.\n\nContinue?"
-    );
-    if (!ok) return;
+    showPermaConfirm = true;
+  }
+
+  async function confirmPerma() {
+    showPermaConfirm = false;
     try {
       let result = await invoke("start_perma_session");
       if (result.error) {
@@ -304,6 +306,22 @@
           <div class="error-banner">
             <span>{errorMsg}</span>
             <button class="dismiss-btn" onclick={() => (errorMsg = "")}>Dismiss</button>
+          </div>
+        {/if}
+
+        {#if showPermaConfirm}
+          <div class="modal-overlay" onclick={() => (showPermaConfirm = false)}>
+            <div class="modal-card" onclick={(e) => e.stopPropagation()}>
+              <div class="modal-title">Start a perma-ban?</div>
+              <div class="modal-text">
+                This lock never expires on its own and survives restarts. The only way to
+                turn it off is to Panic and complete your challenge. There is no timer.
+              </div>
+              <div class="modal-actions">
+                <button class="modal-cancel" onclick={() => (showPermaConfirm = false)}>Cancel</button>
+                <button class="modal-confirm" onclick={confirmPerma}>Start perma-ban</button>
+              </div>
+            </div>
           </div>
         {/if}
 
@@ -599,5 +617,74 @@
 
   .panic-btn:hover {
     opacity: 0.7;
+  }
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-card {
+    width: 300px;
+    background: #282828;
+    border: 1px solid #3a3a3a;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  }
+
+  .modal-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #f0f0f0;
+    margin-bottom: 8px;
+  }
+
+  .modal-text {
+    font-size: 13px;
+    color: #999;
+    line-height: 1.5;
+    margin-bottom: 18px;
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .modal-cancel {
+    padding: 7px 16px;
+    font-size: 13px;
+    background: none;
+    color: #999;
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
+  .modal-cancel:hover {
+    color: #ccc;
+  }
+
+  .modal-confirm {
+    padding: 7px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    background: #ec4899;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
+  .modal-confirm:hover {
+    background: #db2777;
   }
 </style>
