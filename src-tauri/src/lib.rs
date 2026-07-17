@@ -75,6 +75,20 @@ fn run_bliss(args: &[&str]) -> CommandOutput {
     }
 }
 
+/// Run the bliss CLI off the main thread so sync Tauri commands don't freeze the UI.
+async fn run_bliss_async(args: Vec<String>) -> CommandOutput {
+    tauri::async_runtime::spawn_blocking(move || {
+        let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        run_bliss(&refs)
+    })
+    .await
+    .unwrap_or_else(|e| CommandOutput {
+        success: false,
+        stdout: String::new(),
+        error: Some(format!("Failed to run bliss: {}", e)),
+    })
+}
+
 fn read_end_time() -> Option<i64> {
     let data = fs::read_to_string("/var/db/bliss_end_time").ok()?;
     data.trim().parse::<i64>().ok()
@@ -356,18 +370,18 @@ fn get_session_status() -> SessionStatus {
 }
 
 #[tauri::command]
-fn start_session(seconds: u32) -> CommandOutput {
-    run_bliss(&["start", &seconds.to_string(), "--seconds"])
+async fn start_session(seconds: u32) -> CommandOutput {
+    run_bliss_async(vec!["start".into(), seconds.to_string(), "--seconds".into()]).await
 }
 
 #[tauri::command]
-fn start_perma_session() -> CommandOutput {
-    run_bliss(&["perma"])
+async fn start_perma_session() -> CommandOutput {
+    run_bliss_async(vec!["perma".into()]).await
 }
 
 #[tauri::command]
-fn run_panic() -> CommandOutput {
-    let result = run_bliss(&["panic", "--skip-challenge"]);
+async fn run_panic() -> CommandOutput {
+    let result = run_bliss_async(vec!["panic".into(), "--skip-challenge".into()]).await;
     // Delete state immediately so tray/UI update without waiting for blissroot
     let _ = fs::remove_file("/var/db/bliss_end_time");
     let _ = fs::remove_file("/var/db/bliss_perma");
@@ -375,8 +389,8 @@ fn run_panic() -> CommandOutput {
 }
 
 #[tauri::command]
-fn run_repair() -> CommandOutput {
-    run_bliss(&["repair"])
+async fn run_repair() -> CommandOutput {
+    run_bliss_async(vec!["repair".into()]).await
 }
 
 #[tauri::command]
@@ -1398,7 +1412,9 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         let mut was_active = false;
         loop {
             std::thread::sleep(std::time::Duration::from_secs(1));
-            let (active, title) = match read_end_time() {
+            let (active, title) = if perma_active() {
+                (true, "∞".to_string())
+            } else { match read_end_time() {
                 Some(end) => {
                     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
                     let rem = (end - now).max(0);
@@ -1419,7 +1435,7 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 None => (false, String::new()),
-            };
+            } };
 
             if active {
                 let _ = tray_handle.set_title(Some(&title));
