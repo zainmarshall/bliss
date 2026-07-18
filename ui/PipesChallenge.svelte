@@ -303,25 +303,43 @@
     let key = `${r},${c}`;
     if (lastDragCell === key) return;
     lastDragCell = key;
+    stepToward(r, c);
+  }
 
-    // A fast drag reports a pointer position several cells away from the last one.
-    // extendPath only accepts single orthogonal steps, so walk toward the target one
-    // cell at a time (row first, then column) to fill in the skipped cells.
+  // Walk the path head toward the target cell one orthogonal step at a time so that
+  // fast drags (which report a pointer several cells away) still fill every cell.
+  // At each step try both axes and take whichever makes a legal move, so the path
+  // routes around obstacles instead of stalling on the first blocked direction.
+  function stepToward(r, c) {
     let guard = 0;
     while (activeFlow !== null && !won && guard++ < 400) {
       let path = paths[activeFlow];
       if (!path || path.length === 0) break;
       let last = path[path.length - 1];
       if (last[0] === r && last[1] === c) break;
-      let nr = last[0], nc = last[1];
-      if (nr !== r) nr += r > nr ? 1 : -1;
-      else nc += c > nc ? 1 : -1;
-      extendPath(activeFlow, nr, nc);
-      // If extendPath refused the step (blocked cell), stop to avoid spinning.
-      if (activeFlow === null) break;
-      let after = paths[activeFlow];
-      let newLast = after[after.length - 1];
-      if (newLast[0] === last[0] && newLast[1] === last[1]) break;
+
+      let ddr = r - last[0], ddc = c - last[1];
+      let cands = [];
+      let rowStep = [last[0] + Math.sign(ddr), last[1]];
+      let colStep = [last[0], last[1] + Math.sign(ddc)];
+      // Prefer stepping along the axis with the greater remaining distance.
+      if (Math.abs(ddr) >= Math.abs(ddc)) {
+        if (ddr !== 0) cands.push(rowStep);
+        if (ddc !== 0) cands.push(colStep);
+      } else {
+        if (ddc !== 0) cands.push(colStep);
+        if (ddr !== 0) cands.push(rowStep);
+      }
+
+      let moved = false;
+      for (let [nr, nc] of cands) {
+        extendPath(activeFlow, nr, nc);
+        if (activeFlow === null) { moved = true; break; } // reached endpoint, flow done
+        let after = paths[activeFlow];
+        let nl = after[after.length - 1];
+        if (nl[0] === nr && nl[1] === nc) { moved = true; break; } // step accepted
+      }
+      if (!moved) break; // blocked on every axis
     }
   }
 
