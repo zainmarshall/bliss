@@ -214,8 +214,11 @@
     let goingRight = true;
 
     for (let i = 0; i < n * n; i++) {
+      // Track the snake in currentPath only. Non-endpoint cells must stay empty
+      // (flowIndex null) so the player can draw through them - assigning a flowIndex
+      // here made every cell look occupied and blocked dragging (notably the top row,
+      // which this snake fills first).
       currentPath.push([row, col]);
-      grid[row][col] = { flowIndex: fi, isEndpoint: false };
 
       if (currentPath.length >= cellsPerFlow && fi < flowCount - 1) {
         let start = currentPath[0], end = currentPath[currentPath.length - 1];
